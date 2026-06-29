@@ -18,6 +18,9 @@ Cluster, Sentinel, Pub/Sub, Streams, user-defined Lua/Functions, TLS, and generi
 ## Usage
 
 ```java
+import com.reactor.rust.cache.core.RustCache;
+import com.reactor.rust.cache.core.RustCaches;
+
 try (RustCache cache = RustCaches.create()) {
     byte[] cached = cache.reader().getBytes("customer:1001");
     if (cached != null) {
@@ -28,6 +31,19 @@ try (RustCache cache = RustCaches.create()) {
     cache.writer().setBytes("customer:1001", payload, 60_000);
 }
 ```
+
+## Package Layout
+
+The public classes are grouped by responsibility:
+
+| Package | Purpose |
+| --- | --- |
+| `com.reactor.rust.cache.core` | Main client, factory, and cache exception. |
+| `com.reactor.rust.cache.config` | Runtime configuration and property/env binding. |
+| `com.reactor.rust.cache.api` | Read/write contracts and cache read result model. |
+| `com.reactor.rust.cache.lock` | Redis-backed bounded lock abstraction for scheduled writers. |
+| `com.reactor.rust.cache.versioned` | Versioned JSON snapshot reader/writer API. |
+| `com.reactor.rust.cache.internal.nativebridge` | JNI bridge to the native Rust Redis data plane. Treat as internal. |
 
 ## Configuration
 

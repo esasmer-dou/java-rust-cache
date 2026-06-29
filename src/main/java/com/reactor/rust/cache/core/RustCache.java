@@ -1,4 +1,11 @@
-package com.reactor.rust.cache;
+package com.reactor.rust.cache.core;
+
+import com.reactor.rust.cache.api.RustCacheReader;
+import com.reactor.rust.cache.api.RustCacheWriter;
+import com.reactor.rust.cache.config.RustCacheConfig;
+import com.reactor.rust.cache.internal.nativebridge.NativeRedisBridge;
+import com.reactor.rust.cache.lock.RustCacheLocks;
+import com.reactor.rust.cache.versioned.VersionedJsonCache;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
@@ -149,17 +156,17 @@ public final class RustCache implements RustCacheReader, RustCacheWriter, AutoCl
         NativeRedisBridge.resetMetrics();
     }
 
-    boolean acquireLock(String key, String ownerToken, long ttlMillis) {
+    public boolean acquireLock(String key, String ownerToken, long ttlMillis) {
         ensureOpen();
         return NativeRedisBridge.acquireLock(clientId, requireKey(key), ownerToken, ttlMillis);
     }
 
-    boolean renewLock(String key, String ownerToken, long ttlMillis) {
+    public boolean renewLock(String key, String ownerToken, long ttlMillis) {
         ensureOpen();
         return NativeRedisBridge.renewLock(clientId, requireKey(key), ownerToken, ttlMillis);
     }
 
-    boolean releaseLock(String key, String ownerToken) {
+    public boolean releaseLock(String key, String ownerToken) {
         ensureOpen();
         return NativeRedisBridge.releaseLock(clientId, requireKey(key), ownerToken);
     }

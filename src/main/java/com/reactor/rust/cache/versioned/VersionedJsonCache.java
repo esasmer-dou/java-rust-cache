@@ -1,4 +1,6 @@
-package com.reactor.rust.cache;
+package com.reactor.rust.cache.versioned;
+
+import com.reactor.rust.cache.core.RustCache;
 
 import java.util.Objects;
 
@@ -16,7 +18,7 @@ public final class VersionedJsonCache {
         this.writer = new VersionedJsonCacheWriter(cache, this.namespace, 256);
     }
 
-    static VersionedJsonCache create(RustCache cache, String namespace) {
+    public static VersionedJsonCache create(RustCache cache, String namespace) {
         return new VersionedJsonCache(cache, namespace);
     }
 

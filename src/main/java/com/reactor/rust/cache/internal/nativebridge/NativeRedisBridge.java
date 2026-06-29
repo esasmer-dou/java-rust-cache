@@ -1,6 +1,9 @@
-package com.reactor.rust.cache;
+package com.reactor.rust.cache.internal.nativebridge;
 
-final class NativeRedisBridge {
+import com.reactor.rust.cache.config.RustCacheConfig;
+import com.reactor.rust.cache.core.RedisCacheException;
+
+public final class NativeRedisBridge {
 
     private NativeRedisBridge() {}
 
@@ -8,7 +11,7 @@ final class NativeRedisBridge {
         loadNativeLibrary();
     }
 
-    static int createClient(RustCacheConfig config) {
+    public static int createClient(RustCacheConfig config) {
         int id = nativeCreateClient(
                 config.host(),
                 config.port(),
@@ -29,67 +32,67 @@ final class NativeRedisBridge {
         return id;
     }
 
-    static byte[] get(int clientId, String key) {
+    public static byte[] get(int clientId, String key) {
         return nativeGet(clientId, key);
     }
 
-    static byte[][] mget(int clientId, String[] keys) {
+    public static byte[][] mget(int clientId, String[] keys) {
         return nativeMget(clientId, keys);
     }
 
-    static boolean exists(int clientId, String key) {
+    public static boolean exists(int clientId, String key) {
         return nativeExists(clientId, key);
     }
 
-    static long ttl(int clientId, String key) {
+    public static long ttl(int clientId, String key) {
         return nativeTtl(clientId, key);
     }
 
-    static boolean set(int clientId, String key, byte[] value, long ttlMillis) {
+    public static boolean set(int clientId, String key, byte[] value, long ttlMillis) {
         return nativeSet(clientId, key, value, ttlMillis);
     }
 
-    static boolean setNx(int clientId, String key, byte[] value, long ttlMillis) {
+    public static boolean setNx(int clientId, String key, byte[] value, long ttlMillis) {
         return nativeSetNx(clientId, key, value, ttlMillis);
     }
 
-    static int setMany(int clientId, String[] keys, byte[][] values, long ttlMillis) {
+    public static int setMany(int clientId, String[] keys, byte[][] values, long ttlMillis) {
         return nativeSetMany(clientId, keys, values, ttlMillis);
     }
 
-    static long delete(int clientId, String key) {
+    public static long delete(int clientId, String key) {
         return nativeDel(clientId, key);
     }
 
-    static long increment(int clientId, String key, long ttlMillis) {
+    public static long increment(int clientId, String key, long ttlMillis) {
         return nativeIncr(clientId, key, ttlMillis);
     }
 
-    static boolean expire(int clientId, String key, long ttlMillis) {
+    public static boolean expire(int clientId, String key, long ttlMillis) {
         return nativeExpire(clientId, key, ttlMillis);
     }
 
-    static boolean acquireLock(int clientId, String key, String ownerToken, long ttlMillis) {
+    public static boolean acquireLock(int clientId, String key, String ownerToken, long ttlMillis) {
         return nativeAcquireLock(clientId, key, ownerToken, ttlMillis);
     }
 
-    static boolean renewLock(int clientId, String key, String ownerToken, long ttlMillis) {
+    public static boolean renewLock(int clientId, String key, String ownerToken, long ttlMillis) {
         return nativeRenewLock(clientId, key, ownerToken, ttlMillis);
     }
 
-    static boolean releaseLock(int clientId, String key, String ownerToken) {
+    public static boolean releaseLock(int clientId, String key, String ownerToken) {
         return nativeReleaseLock(clientId, key, ownerToken);
     }
 
-    static void closeClient(int clientId) {
+    public static void closeClient(int clientId) {
         nativeCloseClient(clientId);
     }
 
-    static String metricsJson() {
+    public static String metricsJson() {
         return nativeMetricsJson();
     }
 
-    static void resetMetrics() {
+    public static void resetMetrics() {
         nativeResetMetrics();
     }
 

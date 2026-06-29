@@ -1,4 +1,4 @@
-package com.reactor.rust.cache;
+package com.reactor.rust.cache.api;
 
 public interface RustCacheReader {
 

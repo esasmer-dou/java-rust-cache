@@ -6,7 +6,7 @@
 
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.1.0-rc1</version>
+  <version>0.1.0-rc2</version>
   <packaging>jar</packaging>
 
   <name>java-rust-cache</name>

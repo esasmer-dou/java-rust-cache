@@ -1,4 +1,7 @@
-package com.reactor.rust.cache;
+package com.reactor.rust.cache.lock;
+
+import com.reactor.rust.cache.core.RustCache;
+import com.reactor.rust.cache.core.RedisCacheException;
 
 import java.security.SecureRandom;
 import java.util.HexFormat;
@@ -10,7 +13,7 @@ public final class RustCacheLocks {
 
     private final RustCache cache;
 
-    RustCacheLocks(RustCache cache) {
+    public RustCacheLocks(RustCache cache) {
         this.cache = Objects.requireNonNull(cache, "cache");
     }
 

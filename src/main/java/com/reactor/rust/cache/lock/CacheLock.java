@@ -1,4 +1,6 @@
-package com.reactor.rust.cache;
+package com.reactor.rust.cache.lock;
+
+import com.reactor.rust.cache.core.RustCache;
 
 import java.util.Objects;
 

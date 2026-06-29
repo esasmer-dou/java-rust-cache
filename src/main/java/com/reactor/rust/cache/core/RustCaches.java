@@ -1,4 +1,6 @@
-package com.reactor.rust.cache;
+package com.reactor.rust.cache.core;
+
+import com.reactor.rust.cache.config.RustCacheConfig;
 
 import java.util.Properties;
 

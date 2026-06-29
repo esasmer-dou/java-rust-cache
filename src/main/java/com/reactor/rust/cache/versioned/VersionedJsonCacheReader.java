@@ -1,4 +1,7 @@
-package com.reactor.rust.cache;
+package com.reactor.rust.cache.versioned;
+
+import com.reactor.rust.cache.api.CacheReadResult;
+import com.reactor.rust.cache.core.RustCache;
 
 public final class VersionedJsonCacheReader {
 

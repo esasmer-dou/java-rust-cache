@@ -1,4 +1,4 @@
-package com.reactor.rust.cache;
+package com.reactor.rust.cache.config;
 
 import java.util.Locale;
 import java.util.Objects;
