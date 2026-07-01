@@ -14,7 +14,7 @@ public final class VersionedJsonCacheReader {
     VersionedJsonCacheReader(RustCache cache, String namespace, long versionCacheMillis) {
         this.cache = cache;
         this.namespace = namespace;
-        this.versionCacheMillis = Math.max(0L, versionCacheMillis);
+        this.versionCacheMillis = VersionedJsonCache.requireVersionCacheMillis(versionCacheMillis);
     }
 
     public CacheReadResult getById(long id) {

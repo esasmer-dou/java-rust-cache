@@ -3,7 +3,21 @@ package com.reactor.rust.cache.internal.nativebridge;
 import com.reactor.rust.cache.config.RustCacheConfig;
 import com.reactor.rust.cache.core.RedisCacheException;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Locale;
+
 public final class NativeRedisBridge {
+
+    private static final String NATIVE_EXTRACT_DIR_PROPERTY = "reactor.cache.native.extract-dir";
+    private static final String NATIVE_EXTRACT_DIR_ENV = "REACTOR_CACHE_NATIVE_EXTRACT_DIR";
 
     private NativeRedisBridge() {}
 
@@ -113,7 +127,21 @@ public final class NativeRedisBridge {
                 && loadFrameworkNativeBridge(contextLoader)) {
             return;
         }
-        System.loadLibrary("rust_hyper");
+        UnsatisfiedLinkError resourceLoadError = loadPackagedNativeLibrary();
+        if (resourceLoadError == null) {
+            return;
+        }
+
+        try {
+            System.loadLibrary("rust_hyper");
+        } catch (UnsatisfiedLinkError e) {
+            e.addSuppressed(resourceLoadError);
+            throw new RedisCacheException(
+                    "Failed to load native Redis cache bridge. Expected rust_hyper native library from rust-java-rest "
+                            + "or java-rust-cache packaged native resources, or a platform library named rust_hyper on java.library.path="
+                            + System.getProperty("java.library.path"),
+                    e);
+        }
     }
 
     private static boolean loadFrameworkNativeBridge(ClassLoader loader) {
@@ -125,7 +153,97 @@ public final class NativeRedisBridge {
             return true;
         } catch (ClassNotFoundException ignored) {
             return false;
+        } catch (LinkageError e) {
+            throw new RedisCacheException(
+                    "rust-java-rest NativeBridge was found but failed to initialize. "
+                            + "Use a rust-java-rest/native binary version that exports java-rust-cache JNI symbols.",
+                    e);
         }
+    }
+
+    private static UnsatisfiedLinkError loadPackagedNativeLibrary() {
+        String resource = platformResource();
+        if (resource == null) {
+            return new UnsatisfiedLinkError("Unsupported platform for packaged rust_hyper native library: "
+                    + System.getProperty("os.name") + "/" + System.getProperty("os.arch"));
+        }
+
+        try (InputStream input = NativeRedisBridge.class.getClassLoader().getResourceAsStream(resource)) {
+            if (input == null) {
+                return new UnsatisfiedLinkError("Missing packaged native resource: " + resource);
+            }
+            byte[] bytes = input.readAllBytes();
+            Path library = extractNativeLibrary(bytes, resource);
+            System.load(library.toAbsolutePath().toString());
+            return null;
+        } catch (UnsatisfiedLinkError e) {
+            return e;
+        } catch (IOException | RuntimeException e) {
+            UnsatisfiedLinkError error = new UnsatisfiedLinkError("Failed to extract packaged native resource: " + resource);
+            error.initCause(e);
+            return error;
+        }
+    }
+
+    private static Path extractNativeLibrary(byte[] bytes, String resource) throws IOException {
+        String hash = sha256(bytes);
+        String fileName = resource.substring(resource.lastIndexOf('/') + 1);
+        Path directory = nativeExtractRoot().resolve(hash.substring(0, 16));
+        Files.createDirectories(directory);
+        Path library = directory.resolve(fileName);
+        if (Files.exists(library)) {
+            return library;
+        }
+
+        Path temp = Files.createTempFile(directory, fileName, ".tmp");
+        Files.write(temp, bytes);
+        try {
+            Files.move(temp, library, StandardCopyOption.ATOMIC_MOVE);
+        } catch (FileAlreadyExistsException ignored) {
+            Files.deleteIfExists(temp);
+        }
+        return library;
+    }
+
+    private static Path nativeExtractRoot() {
+        String configured = System.getProperty(NATIVE_EXTRACT_DIR_PROPERTY);
+        if (configured == null || configured.isBlank()) {
+            configured = System.getenv(NATIVE_EXTRACT_DIR_ENV);
+        }
+        if (configured != null && !configured.isBlank()) {
+            return Path.of(configured.trim());
+        }
+
+        String home = System.getProperty("user.home");
+        if (home == null || home.isBlank()) {
+            throw new RedisCacheException("user.home is not set; configure "
+                    + NATIVE_EXTRACT_DIR_PROPERTY + " or " + NATIVE_EXTRACT_DIR_ENV);
+        }
+        return Path.of(home, ".java-rust-cache", "native");
+    }
+
+    private static String sha256(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException e) {
+            throw new RedisCacheException("SHA-256 digest is not available", e);
+        }
+    }
+
+    private static String platformResource() {
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
+        boolean x64 = arch.equals("amd64") || arch.equals("x86_64");
+        if (!x64) {
+            return null;
+        }
+        if (os.contains("win")) {
+            return "native/windows-x64/rust_hyper-windows-x64.dll";
+        }
+        if (os.contains("linux")) {
+            return "native/linux-x64/librust_hyper-linux-x64.so";
+        }
+        return null;
     }
 
     private static native int nativeCreateClient(

@@ -2,24 +2,62 @@ package com.reactor.rust.cache.versioned;
 
 import com.reactor.rust.cache.core.RustCache;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 public final class VersionedJsonCache {
+
+    public static final long DEFAULT_VERSION_CACHE_MILLIS = 1_000L;
+    public static final int DEFAULT_BATCH_SIZE = 256;
+    public static final int MAX_BATCH_SIZE = 4_096;
+
+    private static final int MAX_KEY_PART_BYTES = 256;
+    private static final char[] HEX = "0123456789ABCDEF".toCharArray();
 
     private final RustCache cache;
     private final String namespace;
     private final VersionedJsonCacheReader reader;
     private final VersionedJsonCacheWriter writer;
 
-    private VersionedJsonCache(RustCache cache, String namespace) {
+    private VersionedJsonCache(RustCache cache, String namespace, long versionCacheMillis, int batchSize) {
         this.cache = Objects.requireNonNull(cache, "cache");
         this.namespace = normalizeNamespace(namespace);
-        this.reader = new VersionedJsonCacheReader(cache, this.namespace, 1_000L);
-        this.writer = new VersionedJsonCacheWriter(cache, this.namespace, 256);
+        this.reader = new VersionedJsonCacheReader(cache, this.namespace, versionCacheMillis);
+        this.writer = new VersionedJsonCacheWriter(cache, this.namespace, batchSize);
     }
 
     public static VersionedJsonCache create(RustCache cache, String namespace) {
-        return new VersionedJsonCache(cache, namespace);
+        return new VersionedJsonCache(cache, namespace, DEFAULT_VERSION_CACHE_MILLIS, DEFAULT_BATCH_SIZE);
+    }
+
+    public static VersionedJsonCache create(
+            RustCache cache,
+            String namespace,
+            long versionCacheMillis,
+            int batchSize) {
+        return new VersionedJsonCache(cache, namespace, versionCacheMillis, batchSize);
+    }
+
+    public static VersionedJsonCacheReader createReader(RustCache cache, String namespace) {
+        return createReader(cache, namespace, DEFAULT_VERSION_CACHE_MILLIS);
+    }
+
+    public static VersionedJsonCacheReader createReader(RustCache cache, String namespace, long versionCacheMillis) {
+        return new VersionedJsonCacheReader(
+                Objects.requireNonNull(cache, "cache"),
+                normalizeNamespace(namespace),
+                versionCacheMillis);
+    }
+
+    public static VersionedJsonCacheWriter createWriter(RustCache cache, String namespace) {
+        return createWriter(cache, namespace, DEFAULT_BATCH_SIZE);
+    }
+
+    public static VersionedJsonCacheWriter createWriter(RustCache cache, String namespace, int batchSize) {
+        return new VersionedJsonCacheWriter(
+                Objects.requireNonNull(cache, "cache"),
+                normalizeNamespace(namespace),
+                batchSize);
     }
 
     public String namespace() {
@@ -61,6 +99,46 @@ public final class VersionedJsonCache {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("cache key part must not be blank");
         }
-        return value.trim().replace(' ', '_');
+        String trimmed = value.trim();
+        byte[] bytes = trimmed.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > MAX_KEY_PART_BYTES) {
+            throw new IllegalArgumentException("cache key part is too long: " + bytes.length + " bytes");
+        }
+
+        StringBuilder encoded = new StringBuilder(bytes.length);
+        for (byte raw : bytes) {
+            int valueByte = raw & 0xFF;
+            if (isUnreserved(valueByte)) {
+                encoded.append((char) valueByte);
+            } else {
+                encoded.append('%');
+                encoded.append(HEX[(valueByte >>> 4) & 0x0F]);
+                encoded.append(HEX[valueByte & 0x0F]);
+            }
+        }
+        return encoded.toString();
+    }
+
+    static long requireVersionCacheMillis(long value) {
+        if (value < 0) {
+            throw new IllegalArgumentException("versionCacheMillis must not be negative");
+        }
+        return value;
+    }
+
+    static int requireBatchSize(int value) {
+        if (value < 1 || value > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException("batchSize must be between 1 and " + MAX_BATCH_SIZE);
+        }
+        return value;
+    }
+
+    private static boolean isUnreserved(int value) {
+        return value >= 'a' && value <= 'z'
+                || value >= 'A' && value <= 'Z'
+                || value >= '0' && value <= '9'
+                || value == '.'
+                || value == '_'
+                || value == '-';
     }
 }

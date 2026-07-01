@@ -17,7 +17,7 @@ public final class VersionedJsonCacheWriter {
     VersionedJsonCacheWriter(RustCache cache, String namespace, int batchSize) {
         this.cache = cache;
         this.namespace = namespace;
-        this.batchSize = Math.max(1, batchSize);
+        this.batchSize = VersionedJsonCache.requireBatchSize(batchSize);
     }
 
     public SnapshotResult refreshSnapshotWithLock(

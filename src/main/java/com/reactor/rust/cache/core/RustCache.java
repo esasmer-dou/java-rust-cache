@@ -6,6 +6,8 @@ import com.reactor.rust.cache.config.RustCacheConfig;
 import com.reactor.rust.cache.internal.nativebridge.NativeRedisBridge;
 import com.reactor.rust.cache.lock.RustCacheLocks;
 import com.reactor.rust.cache.versioned.VersionedJsonCache;
+import com.reactor.rust.cache.versioned.VersionedJsonCacheReader;
+import com.reactor.rust.cache.versioned.VersionedJsonCacheWriter;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
@@ -43,6 +45,26 @@ public final class RustCache implements RustCacheReader, RustCacheWriter, AutoCl
 
     public VersionedJsonCache versionedJson(String namespace) {
         return VersionedJsonCache.create(this, namespace);
+    }
+
+    public VersionedJsonCache versionedJson(String namespace, long versionCacheMillis, int batchSize) {
+        return VersionedJsonCache.create(this, namespace, versionCacheMillis, batchSize);
+    }
+
+    public VersionedJsonCacheReader versionedJsonReader(String namespace) {
+        return VersionedJsonCache.createReader(this, namespace);
+    }
+
+    public VersionedJsonCacheReader versionedJsonReader(String namespace, long versionCacheMillis) {
+        return VersionedJsonCache.createReader(this, namespace, versionCacheMillis);
+    }
+
+    public VersionedJsonCacheWriter versionedJsonWriter(String namespace) {
+        return VersionedJsonCache.createWriter(this, namespace);
+    }
+
+    public VersionedJsonCacheWriter versionedJsonWriter(String namespace, int batchSize) {
+        return VersionedJsonCache.createWriter(this, namespace, batchSize);
     }
 
     @Override

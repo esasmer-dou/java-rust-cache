@@ -6,10 +6,11 @@ import com.reactor.rust.cache.core.RedisCacheException;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Objects;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class RustCacheLocks {
+
+    private static final SecureRandom TOKEN_RANDOM = new SecureRandom();
 
     private final RustCache cache;
 
@@ -78,11 +79,7 @@ public final class RustCacheLocks {
 
     private static String ownerToken() {
         byte[] bytes = new byte[16];
-        try {
-            SecureRandom.getInstanceStrong().nextBytes(bytes);
-        } catch (Exception ignored) {
-            ThreadLocalRandom.current().nextBytes(bytes);
-        }
+        TOKEN_RANDOM.nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
     }
 
