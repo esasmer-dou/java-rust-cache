@@ -45,6 +45,42 @@ Maven dependency:
 </dependency>
 ```
 
+### GitHub Packages Access
+
+`java-rust-cache` is published through GitHub Packages. Maven must authenticate before it can download the package; this is GitHub Packages' normal access model.
+
+Add the package repository to the consuming project's `pom.xml`:
+
+```xml
+<repositories>
+  <repository>
+    <id>github</id>
+    <url>https://maven.pkg.github.com/esasmer-dou/java-rust-cache</url>
+  </repository>
+</repositories>
+```
+
+Then add a GitHub token with `read:packages` permission to your Maven `settings.xml`:
+
+```xml
+<servers>
+  <server>
+    <id>github</id>
+    <username>YOUR_GITHUB_USERNAME</username>
+    <password>${env.GITHUB_PACKAGES_TOKEN}</password>
+  </server>
+</servers>
+```
+
+Set the token before running Maven:
+
+```powershell
+$env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.1.0"
+```
+
+If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
+
 ```java
 import com.reactor.rust.cache.core.RustCache;
 import com.reactor.rust.cache.core.RustCaches;
