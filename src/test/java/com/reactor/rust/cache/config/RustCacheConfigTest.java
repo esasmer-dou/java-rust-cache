@@ -80,6 +80,7 @@ class RustCacheConfigTest {
         properties.setProperty("reactor.cache.redis.sentinel.master-name", "mymaster");
         properties.setProperty("reactor.cache.redis.sentinel.username", "sentinel-user");
         properties.setProperty("reactor.cache.redis.sentinel.password", "sentinel-secret");
+        properties.setProperty("reactor.cache.redis.sentinel.master-check-ms", "750");
 
         RustCacheConfig config = RustCacheConfig.fromProperties(properties);
 
@@ -88,5 +89,6 @@ class RustCacheConfigTest {
         assertEquals("mymaster", config.sentinelMasterName());
         assertEquals("sentinel-user", config.sentinelUsername());
         assertEquals("sentinel-secret", config.sentinelPassword());
+        assertEquals(750, config.sentinelMasterCheckMs());
     }
 }

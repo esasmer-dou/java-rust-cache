@@ -15,7 +15,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -73,6 +75,9 @@ class RedisTopologyGateTest {
 
         try (RustCache cache = RustCaches.create(sentinelConfig(nodes, masterName))) {
             cache.resetMetrics();
+            List<HostPort> sentinels = parseNodes(nodes);
+            waitForUsableSentinelReplica(sentinels, masterName, Duration.ofSeconds(45));
+
             String before = "sentinel:before:" + UUID.randomUUID();
             assertTrue(cache.setString(before, "before-ok", 30_000));
             assertEquals("before-ok", cache.getString(before));
@@ -81,6 +86,9 @@ class RedisTopologyGateTest {
             command(sentinel.host(), sentinel.port(), "SENTINEL", "FAILOVER", masterName);
             HostPort nextMaster = waitForNewMaster(sentinel, masterName, firstMaster, Duration.ofSeconds(45));
             assertNotEquals(firstMaster, nextMaster);
+            Thread.sleep(Integer.getInteger(
+                    "reactor.cache.redis.integration.sentinel.master-check-ms",
+                    1_000) + 250L);
 
             String after = "sentinel:after:" + UUID.randomUUID();
             RuntimeException last = null;
@@ -167,6 +175,9 @@ class RedisTopologyGateTest {
                 .topology("sentinel")
                 .nodes(nodes)
                 .sentinelMasterName(masterName)
+                .sentinelMasterCheckMs(Integer.getInteger(
+                        "reactor.cache.redis.integration.sentinel.master-check-ms",
+                        1_000))
                 .readConnections(Integer.getInteger("reactor.cache.redis.integration.read-connections", 2))
                 .writeConnections(Integer.getInteger("reactor.cache.redis.integration.write-connections", 2))
                 .maxReadInflight(Integer.getInteger("reactor.cache.redis.integration.max-read-inflight", 32))
@@ -339,6 +350,63 @@ class RedisTopologyGateTest {
             Thread.sleep(500);
         }
         throw new AssertionError("Sentinel did not promote a new master before timeout");
+    }
+
+    private static void waitForUsableSentinelReplica(
+            List<HostPort> sentinels,
+            String masterName,
+            Duration timeout) throws Exception {
+        Instant deadline = Instant.now().plus(timeout);
+        while (Instant.now().isBefore(deadline)) {
+            boolean allReady = true;
+            for (HostPort sentinel : sentinels) {
+                if (!hasUsableSentinelReplica(sentinel, masterName)) {
+                    allReady = false;
+                    break;
+                }
+            }
+            if (allReady) {
+                return;
+            }
+            Thread.sleep(500);
+        }
+        throw new AssertionError("Sentinel did not discover a usable replica before timeout");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean hasUsableSentinelReplica(HostPort sentinel, String masterName) throws IOException {
+        Object response = command(sentinel.host(), sentinel.port(), "SENTINEL", "replicas", masterName);
+        for (Object rawReplica : (List<Object>) response) {
+            Map<String, String> replica = sentinelKeyValues((List<Object>) rawReplica);
+            String flags = replica.getOrDefault("flags", "");
+            boolean unhealthy = flags.contains("s_down")
+                    || flags.contains("o_down")
+                    || flags.contains("disconnected")
+                    || flags.contains("master");
+            boolean linkOk = "ok".equalsIgnoreCase(replica.getOrDefault("master-link-status", ""));
+            if (!unhealthy && linkOk) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Map<String, String> sentinelKeyValues(List<Object> values) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (int index = 0; index + 1 < values.size(); index += 2) {
+            out.put(String.valueOf(values.get(index)), String.valueOf(values.get(index + 1)));
+        }
+        return out;
+    }
+
+    private static List<HostPort> parseNodes(String nodes) {
+        List<HostPort> out = new ArrayList<>();
+        for (String raw : nodes.split(",")) {
+            if (!raw.isBlank()) {
+                out.add(HostPort.parse(raw));
+            }
+        }
+        return out;
     }
 
     private static Object command(String host, int port, String... args) throws IOException {

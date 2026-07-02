@@ -6,7 +6,7 @@ This project intentionally does **not** use Jedis, Lettuce, Spring Data Redis, N
 
 The JAR includes the matching Windows x64 and Linux x64 native binaries. If `rust-java-rest` is already on the classpath, `java-rust-cache` reuses its native bridge; otherwise it extracts and loads its own packaged `rust_hyper` binary. A manual `java.library.path` is only needed for custom native builds.
 
-Cluster/Sentinel support requires Redis native ABI version `2`. If the same application also uses `rust-java-rest`, keep `rust-java-rest` at `3.2.3` or newer so the framework native bridge and the cache library ABI match.
+Cluster support requires Redis native ABI version `2`; Sentinel master failover refresh requires native ABI version `3`. If the same application also uses `rust-java-rest`, keep `rust-java-rest` at `3.2.4` or newer so the framework native bridge and the cache library ABI match.
 
 By default, packaged native binaries are extracted under:
 
@@ -49,7 +49,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.2.0</version>
+  <version>0.2.1</version>
 </dependency>
 ```
 
@@ -84,7 +84,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.0"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.1"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -172,6 +172,7 @@ All keys can be provided as Java system properties, environment variables, or a 
 | `reactor.cache.redis.sentinel.master-name` | `REACTOR_CACHE_REDIS_SENTINEL_MASTER_NAME` | empty |
 | `reactor.cache.redis.sentinel.username` | `REACTOR_CACHE_REDIS_SENTINEL_USERNAME` | empty |
 | `reactor.cache.redis.sentinel.password` | `REACTOR_CACHE_REDIS_SENTINEL_PASSWORD` | empty |
+| `reactor.cache.redis.sentinel.master-check-ms` | `REACTOR_CACHE_REDIS_SENTINEL_MASTER_CHECK_MS` | `1000` |
 | `reactor.cache.redis.cluster.max-redirects` | `REACTOR_CACHE_REDIS_CLUSTER_MAX_REDIRECTS` | `5` |
 | `reactor.cache.redis.topology-refresh-ms` | `REACTOR_CACHE_REDIS_TOPOLOGY_REFRESH_MS` | `30000` |
 | `reactor.cache.redis.host` | `REACTOR_CACHE_REDIS_HOST` | `127.0.0.1` |
@@ -205,9 +206,12 @@ Sentinel is the right fit when Redis has one writable primary and replicas. The 
 reactor.cache.redis.topology=sentinel
 reactor.cache.redis.nodes=redis-sentinel-0:26379,redis-sentinel-1:26379,redis-sentinel-2:26379
 reactor.cache.redis.sentinel.master-name=mymaster
+reactor.cache.redis.sentinel.master-check-ms=1000
 reactor.cache.redis.username=app-cache-user
 reactor.cache.redis.password=${REDIS_PASSWORD}
 ```
+
+`reactor.cache.redis.sentinel.master-check-ms` is intentionally separate from `reactor.cache.redis.topology-refresh-ms`. Sentinel failover needs a cheap, frequent check of the current master, while Cluster slot topology refresh can stay slower. Keep `1000` as a safe starting point; lower it only if failover recovery time is more important than a small increase in Sentinel polling.
 
 If Sentinel itself has different ACL credentials, set them separately:
 
@@ -293,6 +297,8 @@ mvn -q test `
 ```
 
 Passing these gates means the existing Java client object can recover its native topology view after Sentinel failover, Redis Cluster `MOVED`/`ASK` redirects, and Cluster master failover. Still run a sustained load gate under your real Kubernetes CPU/memory limits before calling the profile stable.
+
+On Docker Desktop, avoid starting Maven dependency download or full Surefire bootstrap while Redis Sentinel is running. Sentinel can enter `TILT` mode when the container runtime pauses its event loop, and failover will be delayed by design. For local live gates, pre-run `mvn -DskipTests test-compile dependency:build-classpath` and then execute `com.reactor.rust.cache.core.RedisTopologyLiveGateMain` from `target/test-classes`. This uses the same gate logic with much lower runtime noise.
 
 Before promoting a new build, also run the Redis restart and short load gates:
 

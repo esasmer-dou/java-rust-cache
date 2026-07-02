@@ -15,6 +15,7 @@ public final class RustCacheConfig {
     private final String sentinelMasterName;
     private final String sentinelUsername;
     private final String sentinelPassword;
+    private final int sentinelMasterCheckMs;
     private final String username;
     private final String password;
     private final int database;
@@ -37,6 +38,7 @@ public final class RustCacheConfig {
         this.sentinelMasterName = normalizeOptional(builder.sentinelMasterName);
         this.sentinelUsername = normalizeOptional(builder.sentinelUsername);
         this.sentinelPassword = normalizeOptional(builder.sentinelPassword);
+        this.sentinelMasterCheckMs = requirePositive(builder.sentinelMasterCheckMs, "sentinelMasterCheckMs");
         this.username = normalizeOptional(builder.username);
         this.password = normalizeOptional(builder.password);
         this.database = requireNonNegative(builder.database, "database");
@@ -71,6 +73,7 @@ public final class RustCacheConfig {
         builder.sentinelMasterName(readString(properties, "sentinel.master-name", builder.sentinelMasterName));
         builder.sentinelUsername(readString(properties, "sentinel.username", builder.sentinelUsername));
         builder.sentinelPassword(readString(properties, "sentinel.password", builder.sentinelPassword));
+        builder.sentinelMasterCheckMs(readInt(properties, "sentinel.master-check-ms", builder.sentinelMasterCheckMs));
         builder.username(readString(properties, "username", builder.username));
         builder.password(readString(properties, "password", builder.password));
         builder.database(readInt(properties, "database", builder.database));
@@ -113,6 +116,10 @@ public final class RustCacheConfig {
 
     public String sentinelPassword() {
         return sentinelPassword;
+    }
+
+    public int sentinelMasterCheckMs() {
+        return sentinelMasterCheckMs;
     }
 
     public String username() {
@@ -251,6 +258,7 @@ public final class RustCacheConfig {
         private String sentinelMasterName = "";
         private String sentinelUsername = "";
         private String sentinelPassword = "";
+        private int sentinelMasterCheckMs = 1_000;
         private String username = "";
         private String password = "";
         private int database = 0;
@@ -304,6 +312,11 @@ public final class RustCacheConfig {
 
         public Builder sentinelPassword(String sentinelPassword) {
             this.sentinelPassword = sentinelPassword;
+            return this;
+        }
+
+        public Builder sentinelMasterCheckMs(int sentinelMasterCheckMs) {
+            this.sentinelMasterCheckMs = sentinelMasterCheckMs;
             return this;
         }
 

@@ -19,6 +19,7 @@ public final class NativeRedisBridge {
     private static final String NATIVE_EXTRACT_DIR_PROPERTY = "reactor.cache.native.extract-dir";
     private static final String NATIVE_EXTRACT_DIR_ENV = "REACTOR_CACHE_NATIVE_EXTRACT_DIR";
     private static final int REDIS_TOPOLOGY_ABI_VERSION = 2;
+    private static final int REDIS_SENTINEL_MASTER_CHECK_ABI_VERSION = 3;
 
     private NativeRedisBridge() {}
 
@@ -29,7 +30,36 @@ public final class NativeRedisBridge {
     public static int createClient(RustCacheConfig config) {
         int abiVersion = nativeAbiVersionOrLegacy();
         int id;
-        if (abiVersion >= REDIS_TOPOLOGY_ABI_VERSION) {
+        if (abiVersion >= REDIS_SENTINEL_MASTER_CHECK_ABI_VERSION) {
+            id = nativeCreateClientWithTopologyV3(
+                    config.topology().wireValue(),
+                    config.effectiveNodes(),
+                    config.host(),
+                    config.port(),
+                    config.sentinelMasterName(),
+                    config.sentinelUsername(),
+                    config.sentinelPassword(),
+                    config.username(),
+                    config.password(),
+                    config.database(),
+                    config.connectTimeoutMs(),
+                    config.readTimeoutMs(),
+                    config.writeTimeoutMs(),
+                    config.readConnections(),
+                    config.writeConnections(),
+                    config.maxReadInflight(),
+                    config.maxWriteInflight(),
+                    config.maxResponseBytes(),
+                    config.clusterMaxRedirects(),
+                    config.topologyRefreshMs(),
+                    config.sentinelMasterCheckMs());
+        } else if (abiVersion >= REDIS_TOPOLOGY_ABI_VERSION) {
+            if (config.topology() == com.reactor.rust.cache.config.RedisTopology.SENTINEL) {
+                throw new RedisCacheException(
+                        "Redis Sentinel topology requires rust_hyper native ABI "
+                                + REDIS_SENTINEL_MASTER_CHECK_ABI_VERSION
+                                + " or newer for configurable master refresh. Loaded ABI version: " + abiVersion);
+            }
             id = nativeCreateClientWithTopology(
                     config.topology().wireValue(),
                     config.effectiveNodes(),
@@ -326,6 +356,29 @@ public final class NativeRedisBridge {
             int maxResponseBytes,
             int clusterMaxRedirects,
             int topologyRefreshMs);
+
+    private static native int nativeCreateClientWithTopologyV3(
+            String topology,
+            String nodes,
+            String host,
+            int port,
+            String sentinelMasterName,
+            String sentinelUsername,
+            String sentinelPassword,
+            String username,
+            String password,
+            int database,
+            int connectTimeoutMs,
+            int readTimeoutMs,
+            int writeTimeoutMs,
+            int readConnections,
+            int writeConnections,
+            int maxReadInflight,
+            int maxWriteInflight,
+            int maxResponseBytes,
+            int clusterMaxRedirects,
+            int topologyRefreshMs,
+            int sentinelMasterCheckMs);
 
     private static native byte[] nativeGet(int clientId, String key);
 
