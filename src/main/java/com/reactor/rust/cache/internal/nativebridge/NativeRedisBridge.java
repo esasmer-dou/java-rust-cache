@@ -18,6 +18,7 @@ public final class NativeRedisBridge {
 
     private static final String NATIVE_EXTRACT_DIR_PROPERTY = "reactor.cache.native.extract-dir";
     private static final String NATIVE_EXTRACT_DIR_ENV = "REACTOR_CACHE_NATIVE_EXTRACT_DIR";
+    private static final int REDIS_TOPOLOGY_ABI_VERSION = 2;
 
     private NativeRedisBridge() {}
 
@@ -26,24 +27,65 @@ public final class NativeRedisBridge {
     }
 
     public static int createClient(RustCacheConfig config) {
-        int id = nativeCreateClient(
-                config.host(),
-                config.port(),
-                config.username(),
-                config.password(),
-                config.database(),
-                config.connectTimeoutMs(),
-                config.readTimeoutMs(),
-                config.writeTimeoutMs(),
-                config.readConnections(),
-                config.writeConnections(),
-                config.maxReadInflight(),
-                config.maxWriteInflight(),
-                config.maxResponseBytes());
+        int abiVersion = nativeAbiVersionOrLegacy();
+        int id;
+        if (abiVersion >= REDIS_TOPOLOGY_ABI_VERSION) {
+            id = nativeCreateClientWithTopology(
+                    config.topology().wireValue(),
+                    config.effectiveNodes(),
+                    config.host(),
+                    config.port(),
+                    config.sentinelMasterName(),
+                    config.sentinelUsername(),
+                    config.sentinelPassword(),
+                    config.username(),
+                    config.password(),
+                    config.database(),
+                    config.connectTimeoutMs(),
+                    config.readTimeoutMs(),
+                    config.writeTimeoutMs(),
+                    config.readConnections(),
+                    config.writeConnections(),
+                    config.maxReadInflight(),
+                    config.maxWriteInflight(),
+                    config.maxResponseBytes(),
+                    config.clusterMaxRedirects(),
+                    config.topologyRefreshMs());
+        } else {
+            if (config.topology() != com.reactor.rust.cache.config.RedisTopology.STANDALONE) {
+                throw new RedisCacheException(
+                        "Redis " + config.topology().wireValue()
+                                + " topology requires rust_hyper native ABI "
+                                + REDIS_TOPOLOGY_ABI_VERSION
+                                + " or newer. Loaded ABI version: " + abiVersion);
+            }
+            id = nativeCreateClient(
+                    config.host(),
+                    config.port(),
+                    config.username(),
+                    config.password(),
+                    config.database(),
+                    config.connectTimeoutMs(),
+                    config.readTimeoutMs(),
+                    config.writeTimeoutMs(),
+                    config.readConnections(),
+                    config.writeConnections(),
+                    config.maxReadInflight(),
+                    config.maxWriteInflight(),
+                    config.maxResponseBytes());
+        }
         if (id <= 0) {
             throw new RedisCacheException("Failed to create native Redis cache client");
         }
         return id;
+    }
+
+    private static int nativeAbiVersionOrLegacy() {
+        try {
+            return nativeAbiVersion();
+        } catch (UnsatisfiedLinkError ignored) {
+            return 1;
+        }
     }
 
     public static byte[] get(int clientId, String key) {
@@ -260,6 +302,30 @@ public final class NativeRedisBridge {
             int maxReadInflight,
             int maxWriteInflight,
             int maxResponseBytes);
+
+    private static native int nativeAbiVersion();
+
+    private static native int nativeCreateClientWithTopology(
+            String topology,
+            String nodes,
+            String host,
+            int port,
+            String sentinelMasterName,
+            String sentinelUsername,
+            String sentinelPassword,
+            String username,
+            String password,
+            int database,
+            int connectTimeoutMs,
+            int readTimeoutMs,
+            int writeTimeoutMs,
+            int readConnections,
+            int writeConnections,
+            int maxReadInflight,
+            int maxWriteInflight,
+            int maxResponseBytes,
+            int clusterMaxRedirects,
+            int topologyRefreshMs);
 
     private static native byte[] nativeGet(int clientId, String key);
 

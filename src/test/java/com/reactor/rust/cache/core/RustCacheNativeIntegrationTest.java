@@ -155,15 +155,26 @@ class RustCacheNativeIntegrationTest {
     }
 
     private static RustCacheConfig integrationConfig() {
-        return RustCacheConfig.builder()
+        RustCacheConfig.Builder builder = RustCacheConfig.builder()
+                .topology(System.getProperty("reactor.cache.redis.integration.topology", "standalone"))
                 .host(System.getProperty("reactor.cache.redis.integration.host", "127.0.0.1"))
                 .port(Integer.getInteger("reactor.cache.redis.integration.port", 6379))
                 .database(Integer.getInteger("reactor.cache.redis.integration.database", 0))
                 .readConnections(Integer.getInteger("reactor.cache.redis.integration.read-connections", 2))
                 .writeConnections(Integer.getInteger("reactor.cache.redis.integration.write-connections", 2))
                 .maxReadInflight(Integer.getInteger("reactor.cache.redis.integration.max-read-inflight", 16))
-                .maxWriteInflight(Integer.getInteger("reactor.cache.redis.integration.max-write-inflight", 16))
-                .build();
+                .maxWriteInflight(Integer.getInteger("reactor.cache.redis.integration.max-write-inflight", 16));
+        String nodes = System.getProperty("reactor.cache.redis.integration.nodes");
+        if (nodes != null && !nodes.isBlank()) {
+            builder.nodes(nodes);
+        }
+        String sentinelMasterName = System.getProperty("reactor.cache.redis.integration.sentinel.master-name");
+        if (sentinelMasterName != null && !sentinelMasterName.isBlank()) {
+            builder.sentinelMasterName(sentinelMasterName);
+        }
+        builder.clusterMaxRedirects(Integer.getInteger("reactor.cache.redis.integration.cluster.max-redirects", 5));
+        builder.topologyRefreshMs(Integer.getInteger("reactor.cache.redis.integration.topology-refresh-ms", 30_000));
+        return builder.build();
     }
 
     private static void runDocker(String... args) throws IOException, InterruptedException {

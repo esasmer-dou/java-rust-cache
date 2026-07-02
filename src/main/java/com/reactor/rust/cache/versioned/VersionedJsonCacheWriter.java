@@ -1,6 +1,7 @@
 package com.reactor.rust.cache.versioned;
 
 import com.reactor.rust.cache.core.RustCache;
+import com.reactor.rust.cache.lock.CacheLock;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -27,11 +28,22 @@ public final class VersionedJsonCacheWriter {
             SnapshotCallback callback) {
         Objects.requireNonNull(callback, "callback");
         SnapshotResult[] result = new SnapshotResult[1];
-        boolean ran = cache.locks().runOnce(lockName, lockTtlMillis, () -> result[0] = refreshSnapshot(dataTtlMillis, callback));
+        boolean ran = cache.locks().runOnceChecked(
+                lockName,
+                lockTtlMillis,
+                lock -> result[0] = refreshSnapshot(dataTtlMillis, callback, lock, lockTtlMillis));
         return ran ? result[0] : SnapshotResult.skippedResult();
     }
 
     public SnapshotResult refreshSnapshot(long dataTtlMillis, SnapshotCallback callback) throws Exception {
+        return refreshSnapshot(dataTtlMillis, callback, null, 0);
+    }
+
+    private SnapshotResult refreshSnapshot(
+            long dataTtlMillis,
+            SnapshotCallback callback,
+            CacheLock lock,
+            long lockTtlMillis) throws Exception {
         Objects.requireNonNull(callback, "callback");
         if (dataTtlMillis <= 0) {
             throw new IllegalArgumentException("dataTtlMillis must be positive");
@@ -39,6 +51,13 @@ public final class VersionedJsonCacheWriter {
         String version = newVersion();
         VersionedJsonSnapshot snapshot = new VersionedJsonSnapshot(cache, namespace, version, dataTtlMillis, batchSize);
         callback.write(snapshot);
+        if (lock != null) {
+            lock.ensureValid();
+            if (!lock.renew(lockTtlMillis)) {
+                throw new IllegalStateException("Redis lock lease could not be renewed before publishing snapshot");
+            }
+            lock.ensureValid();
+        }
         int written = snapshot.publish();
         return SnapshotResult.publishedResult(version, written);
     }

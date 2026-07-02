@@ -10,6 +10,11 @@ public final class RustCacheConfig {
 
     private final String host;
     private final int port;
+    private final RedisTopology topology;
+    private final String nodes;
+    private final String sentinelMasterName;
+    private final String sentinelUsername;
+    private final String sentinelPassword;
     private final String username;
     private final String password;
     private final int database;
@@ -21,10 +26,17 @@ public final class RustCacheConfig {
     private final int maxReadInflight;
     private final int maxWriteInflight;
     private final int maxResponseBytes;
+    private final int clusterMaxRedirects;
+    private final int topologyRefreshMs;
 
     private RustCacheConfig(Builder builder) {
         this.host = requireText(builder.host, "host");
         this.port = requirePort(builder.port);
+        this.topology = Objects.requireNonNull(builder.topology, "topology");
+        this.nodes = normalizeOptional(builder.nodes);
+        this.sentinelMasterName = normalizeOptional(builder.sentinelMasterName);
+        this.sentinelUsername = normalizeOptional(builder.sentinelUsername);
+        this.sentinelPassword = normalizeOptional(builder.sentinelPassword);
         this.username = normalizeOptional(builder.username);
         this.password = normalizeOptional(builder.password);
         this.database = requireNonNegative(builder.database, "database");
@@ -36,6 +48,9 @@ public final class RustCacheConfig {
         this.maxReadInflight = requirePositive(builder.maxReadInflight, "maxReadInflight");
         this.maxWriteInflight = requirePositive(builder.maxWriteInflight, "maxWriteInflight");
         this.maxResponseBytes = requirePositive(builder.maxResponseBytes, "maxResponseBytes");
+        this.clusterMaxRedirects = requirePositive(builder.clusterMaxRedirects, "clusterMaxRedirects");
+        this.topologyRefreshMs = requirePositive(builder.topologyRefreshMs, "topologyRefreshMs");
+        validateTopology();
     }
 
     public static Builder builder() {
@@ -51,6 +66,11 @@ public final class RustCacheConfig {
         Builder builder = builder();
         builder.host(readString(properties, "host", builder.host));
         builder.port(readInt(properties, "port", builder.port));
+        builder.topology(RedisTopology.parse(readString(properties, "topology", builder.topology.wireValue())));
+        builder.nodes(readString(properties, "nodes", builder.nodes));
+        builder.sentinelMasterName(readString(properties, "sentinel.master-name", builder.sentinelMasterName));
+        builder.sentinelUsername(readString(properties, "sentinel.username", builder.sentinelUsername));
+        builder.sentinelPassword(readString(properties, "sentinel.password", builder.sentinelPassword));
         builder.username(readString(properties, "username", builder.username));
         builder.password(readString(properties, "password", builder.password));
         builder.database(readInt(properties, "database", builder.database));
@@ -62,6 +82,8 @@ public final class RustCacheConfig {
         builder.maxReadInflight(readInt(properties, "max-read-inflight", builder.maxReadInflight));
         builder.maxWriteInflight(readInt(properties, "max-write-inflight", builder.maxWriteInflight));
         builder.maxResponseBytes(readInt(properties, "max-response-bytes", builder.maxResponseBytes));
+        builder.clusterMaxRedirects(readInt(properties, "cluster.max-redirects", builder.clusterMaxRedirects));
+        builder.topologyRefreshMs(readInt(properties, "topology-refresh-ms", builder.topologyRefreshMs));
         return builder.build();
     }
 
@@ -71,6 +93,26 @@ public final class RustCacheConfig {
 
     public int port() {
         return port;
+    }
+
+    public RedisTopology topology() {
+        return topology;
+    }
+
+    public String nodes() {
+        return nodes;
+    }
+
+    public String sentinelMasterName() {
+        return sentinelMasterName;
+    }
+
+    public String sentinelUsername() {
+        return sentinelUsername;
+    }
+
+    public String sentinelPassword() {
+        return sentinelPassword;
     }
 
     public String username() {
@@ -115,6 +157,18 @@ public final class RustCacheConfig {
 
     public int maxResponseBytes() {
         return maxResponseBytes;
+    }
+
+    public int clusterMaxRedirects() {
+        return clusterMaxRedirects;
+    }
+
+    public int topologyRefreshMs() {
+        return topologyRefreshMs;
+    }
+
+    public String effectiveNodes() {
+        return nodes.isEmpty() ? host + ":" + port : nodes;
     }
 
     private static String readString(Properties properties, String suffix, String fallback) {
@@ -177,9 +231,26 @@ public final class RustCacheConfig {
         return value;
     }
 
+    private void validateTopology() {
+        if (topology == RedisTopology.SENTINEL && sentinelMasterName.isEmpty()) {
+            throw new IllegalArgumentException("sentinel.master-name must be configured for Redis Sentinel topology");
+        }
+        if ((topology == RedisTopology.SENTINEL || topology == RedisTopology.CLUSTER) && effectiveNodes().isBlank()) {
+            throw new IllegalArgumentException("nodes must be configured for Redis " + topology.wireValue() + " topology");
+        }
+        if (topology == RedisTopology.CLUSTER && database != 0) {
+            throw new IllegalArgumentException("Redis Cluster supports database 0 only");
+        }
+    }
+
     public static final class Builder {
         private String host = "127.0.0.1";
         private int port = 6379;
+        private RedisTopology topology = RedisTopology.STANDALONE;
+        private String nodes = "";
+        private String sentinelMasterName = "";
+        private String sentinelUsername = "";
+        private String sentinelPassword = "";
         private String username = "";
         private String password = "";
         private int database = 0;
@@ -191,6 +262,8 @@ public final class RustCacheConfig {
         private int maxReadInflight = 128;
         private int maxWriteInflight = 64;
         private int maxResponseBytes = 1024 * 1024;
+        private int clusterMaxRedirects = 5;
+        private int topologyRefreshMs = 30_000;
 
         private Builder() {}
 
@@ -201,6 +274,36 @@ public final class RustCacheConfig {
 
         public Builder port(int port) {
             this.port = port;
+            return this;
+        }
+
+        public Builder topology(RedisTopology topology) {
+            this.topology = Objects.requireNonNull(topology, "topology");
+            return this;
+        }
+
+        public Builder topology(String topology) {
+            this.topology = RedisTopology.parse(topology);
+            return this;
+        }
+
+        public Builder nodes(String nodes) {
+            this.nodes = nodes;
+            return this;
+        }
+
+        public Builder sentinelMasterName(String sentinelMasterName) {
+            this.sentinelMasterName = sentinelMasterName;
+            return this;
+        }
+
+        public Builder sentinelUsername(String sentinelUsername) {
+            this.sentinelUsername = sentinelUsername;
+            return this;
+        }
+
+        public Builder sentinelPassword(String sentinelPassword) {
+            this.sentinelPassword = sentinelPassword;
             return this;
         }
 
@@ -256,6 +359,16 @@ public final class RustCacheConfig {
 
         public Builder maxResponseBytes(int maxResponseBytes) {
             this.maxResponseBytes = maxResponseBytes;
+            return this;
+        }
+
+        public Builder clusterMaxRedirects(int clusterMaxRedirects) {
+            this.clusterMaxRedirects = clusterMaxRedirects;
+            return this;
+        }
+
+        public Builder topologyRefreshMs(int topologyRefreshMs) {
+            this.topologyRefreshMs = topologyRefreshMs;
             return this;
         }
 

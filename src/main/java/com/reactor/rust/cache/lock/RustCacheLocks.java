@@ -31,6 +31,14 @@ public final class RustCacheLocks {
 
     public boolean runOnce(String name, long ttlMillis, ThrowingRunnable task) {
         Objects.requireNonNull(task, "task");
+        return runOnceChecked(name, ttlMillis, lock -> {
+            task.run();
+            lock.ensureValid();
+        });
+    }
+
+    public boolean runOnceChecked(String name, long ttlMillis, ThrowingLockRunnable task) {
+        Objects.requireNonNull(task, "task");
         CacheLock lock = tryAcquire(name, ttlMillis);
         if (lock == null) {
             return false;
@@ -38,7 +46,8 @@ public final class RustCacheLocks {
         AtomicBoolean running = new AtomicBoolean(true);
         Thread renewer = startRenewer(lock, ttlMillis, running);
         try (lock) {
-            task.run();
+            task.run(lock);
+            lock.ensureValid();
             return true;
         } catch (Exception e) {
             throw new RedisCacheException("Locked cache task failed: " + name, e);
@@ -60,7 +69,13 @@ public final class RustCacheLocks {
                     Thread.currentThread().interrupt();
                     return;
                 }
-                if (running.get() && !lock.renew(ttlMillis)) {
+                try {
+                    if (running.get() && !lock.renew(ttlMillis)) {
+                        lock.markLost();
+                        return;
+                    }
+                } catch (RuntimeException e) {
+                    lock.markLost();
                     return;
                 }
             }
@@ -86,5 +101,10 @@ public final class RustCacheLocks {
     @FunctionalInterface
     public interface ThrowingRunnable {
         void run() throws Exception;
+    }
+
+    @FunctionalInterface
+    public interface ThrowingLockRunnable {
+        void run(CacheLock lock) throws Exception;
     }
 }

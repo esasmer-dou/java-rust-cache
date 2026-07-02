@@ -6,6 +6,8 @@ This project intentionally does **not** use Jedis, Lettuce, Spring Data Redis, N
 
 The JAR includes the matching Windows x64 and Linux x64 native binaries. If `rust-java-rest` is already on the classpath, `java-rust-cache` reuses its native bridge; otherwise it extracts and loads its own packaged `rust_hyper` binary. A manual `java.library.path` is only needed for custom native builds.
 
+Cluster/Sentinel support requires Redis native ABI version `2`. If the same application also uses `rust-java-rest`, keep `rust-java-rest` at `3.2.3` or newer so the framework native bridge and the cache library ABI match.
+
 By default, packaged native binaries are extracted under:
 
 ```text
@@ -22,16 +24,22 @@ env:
 
 Do not extract into the application classpath or inside the JAR. Those locations should be treated as read-only runtime artifacts.
 
+Container image note: the packaged Linux binary is built on a manylinux2014/glibc 2.17 baseline. It is intended to run on common glibc-based images including CentOS 7+, CentOS 8, UBI 8/9, Ubuntu/Jammy, and Semeru/OpenJ9 images. If you replace the packaged native binary with a custom build, build it on the oldest Linux base your platform supports.
+
 ## First Scope
 
-- Redis standalone or Kubernetes Service DNS.
+- Redis standalone for local/dev or explicitly accepted single-node deployments.
+- Redis Sentinel for master discovery and failover.
+- Redis Cluster for slot-based routing, `MOVED`/`ASK` redirect handling, and node-level connection pools.
 - RESP2 only.
 - `GET`, `MGET`, `SET`, `SET NX`, `DEL`, `EXISTS`, `INCR`, `PEXPIRE`, `PTTL`.
 - Separate read/write connection pools.
 - Separate read/write max-in-flight limits.
 - Bounded response size.
 
-Cluster, Sentinel, Pub/Sub, Streams, user-defined Lua/Functions, TLS, and generic `Object` cache APIs are intentionally outside the first release. `increment(key, ttlMillis)` uses one fixed internal Redis script so the counter and expiry are applied atomically.
+Pub/Sub, Streams, user-defined Lua/Functions, TLS, and generic `Object` cache APIs remain intentionally outside this library. `increment(key, ttlMillis)` uses one fixed internal Redis script so the counter and expiry are applied atomically.
+
+Production rule: do not run critical services against a single standalone Redis unless the business explicitly accepts cache outage. Use Sentinel when you need one writable primary with failover. Use Cluster when you need horizontal Redis scaling and slot distribution.
 
 ## Usage
 
@@ -41,7 +49,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
 </dependency>
 ```
 
@@ -76,7 +84,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.1.0"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.0"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -159,6 +167,13 @@ All keys can be provided as Java system properties, environment variables, or a 
 
 | Property | Env | Default |
 | --- | --- | --- |
+| `reactor.cache.redis.topology` | `REACTOR_CACHE_REDIS_TOPOLOGY` | `standalone` |
+| `reactor.cache.redis.nodes` | `REACTOR_CACHE_REDIS_NODES` | empty |
+| `reactor.cache.redis.sentinel.master-name` | `REACTOR_CACHE_REDIS_SENTINEL_MASTER_NAME` | empty |
+| `reactor.cache.redis.sentinel.username` | `REACTOR_CACHE_REDIS_SENTINEL_USERNAME` | empty |
+| `reactor.cache.redis.sentinel.password` | `REACTOR_CACHE_REDIS_SENTINEL_PASSWORD` | empty |
+| `reactor.cache.redis.cluster.max-redirects` | `REACTOR_CACHE_REDIS_CLUSTER_MAX_REDIRECTS` | `5` |
+| `reactor.cache.redis.topology-refresh-ms` | `REACTOR_CACHE_REDIS_TOPOLOGY_REFRESH_MS` | `30000` |
 | `reactor.cache.redis.host` | `REACTOR_CACHE_REDIS_HOST` | `127.0.0.1` |
 | `reactor.cache.redis.port` | `REACTOR_CACHE_REDIS_PORT` | `6379` |
 | `reactor.cache.redis.username` | `REACTOR_CACHE_REDIS_USERNAME` | empty |
@@ -173,6 +188,47 @@ All keys can be provided as Java system properties, environment variables, or a 
 | `reactor.cache.redis.max-write-inflight` | `REACTOR_CACHE_REDIS_MAX_WRITE_INFLIGHT` | `64` |
 | `reactor.cache.redis.max-response-bytes` | `REACTOR_CACHE_REDIS_MAX_RESPONSE_BYTES` | `1048576` |
 | `reactor.cache.native.extract-dir` | `REACTOR_CACHE_NATIVE_EXTRACT_DIR` | `${user.home}/.java-rust-cache/native` |
+
+### Topology Recipes
+
+Standalone is mainly for local development:
+
+```properties
+reactor.cache.redis.topology=standalone
+reactor.cache.redis.host=127.0.0.1
+reactor.cache.redis.port=6379
+```
+
+Sentinel is the right fit when Redis has one writable primary and replicas. The library asks Sentinel for the current master, opens native TCP pools to that master, and refreshes discovery after socket errors or `READONLY` responses:
+
+```properties
+reactor.cache.redis.topology=sentinel
+reactor.cache.redis.nodes=redis-sentinel-0:26379,redis-sentinel-1:26379,redis-sentinel-2:26379
+reactor.cache.redis.sentinel.master-name=mymaster
+reactor.cache.redis.username=app-cache-user
+reactor.cache.redis.password=${REDIS_PASSWORD}
+```
+
+If Sentinel itself has different ACL credentials, set them separately:
+
+```properties
+reactor.cache.redis.sentinel.username=sentinel-user
+reactor.cache.redis.sentinel.password=${REDIS_SENTINEL_PASSWORD}
+```
+
+Cluster is the right fit when Redis is sharded. The library loads `CLUSTER SLOTS`, routes each key to the owning node, handles `MOVED`/`ASK`, and groups cross-slot `MGET`/`setMany` work safely:
+
+```properties
+reactor.cache.redis.topology=cluster
+reactor.cache.redis.nodes=redis-cluster-0:6379,redis-cluster-1:6379,redis-cluster-2:6379
+reactor.cache.redis.cluster.max-redirects=5
+reactor.cache.redis.topology-refresh-ms=30000
+reactor.cache.redis.database=0
+```
+
+Redis Cluster does not support database selection; `reactor.cache.redis.database` must stay `0`. If you need multi-key locality, use Redis hash tags in your own key design, for example `customer:{1001}:profile` and `customer:{1001}:orders`. Keys with the same tag route to the same slot.
+
+Kubernetes note: Cluster nodes must announce addresses reachable from the application pod. If Redis returns pod-local or container-local addresses in `CLUSTER SLOTS`/`MOVED`, routing will fail regardless of the client.
 
 ## Verification
 
@@ -196,7 +252,49 @@ docker rm -f java-rust-cache-redis-test
 
 This integration test covers `GET`, `MGET`, `SET`, `SET NX`, `setMany`, `DEL`, `EXISTS`, `INCR`, `PEXPIRE`, `PTTL`, lock acquire/renew/release, and native metrics. If this test fails after a Java package refactor, check the Rust JNI export names first.
 
-Before promoting an RC to stable, also run the Redis restart and short load gates:
+The same integration test can be pointed at Sentinel or Cluster:
+
+```powershell
+mvn -q test `
+  "-Dreactor.cache.redis.integration=true" `
+  "-Dreactor.cache.redis.integration.topology=sentinel" `
+  "-Dreactor.cache.redis.integration.nodes=127.0.0.1:26379" `
+  "-Dreactor.cache.redis.integration.sentinel.master-name=mymaster"
+
+mvn -q test `
+  "-Dreactor.cache.redis.integration=true" `
+  "-Dreactor.cache.redis.integration.topology=cluster" `
+  "-Dreactor.cache.redis.integration.nodes=127.0.0.1:17000"
+```
+
+These are smoke gates. They prove that the native bridge can talk to the selected topology, but they do not prove failover behavior.
+
+For a production promotion, run the topology gates against real multi-node Redis topologies. The tests are intentionally opt-in because they require Docker networks or externally managed Redis environments:
+
+```powershell
+# Requires a 3-Sentinel setup and a master name that can fail over to a replica.
+mvn -q test `
+  "-Dtest=RedisTopologyGateTest#sentinelRefreshesExistingClientAfterFailover" `
+  "-Dreactor.cache.redis.sentinel-failover-gate=true" `
+  "-Dreactor.cache.redis.integration.nodes=redis-sentinel-0:26379,redis-sentinel-1:26379,redis-sentinel-2:26379" `
+  "-Dreactor.cache.redis.integration.sentinel.master-name=mymaster"
+
+# Requires a real Redis Cluster with at least 3 masters.
+mvn -q test `
+  "-Dtest=RedisTopologyGateTest#clusterHandlesMovedAndAskRedirects" `
+  "-Dreactor.cache.redis.cluster-redirect-gate=true" `
+  "-Dreactor.cache.redis.integration.nodes=redis-cluster-0:6379,redis-cluster-1:6379,redis-cluster-2:6379"
+
+# Requires a Redis Cluster with replicas so one master can be stopped and replaced.
+mvn -q test `
+  "-Dtest=RedisTopologyGateTest#clusterRefreshesExistingClientAfterReplicaFailover" `
+  "-Dreactor.cache.redis.cluster-failover-gate=true" `
+  "-Dreactor.cache.redis.integration.nodes=redis-cluster-0:6379,redis-cluster-1:6379,redis-cluster-2:6379,redis-cluster-3:6379,redis-cluster-4:6379,redis-cluster-5:6379"
+```
+
+Passing these gates means the existing Java client object can recover its native topology view after Sentinel failover, Redis Cluster `MOVED`/`ASK` redirects, and Cluster master failover. Still run a sustained load gate under your real Kubernetes CPU/memory limits before calling the profile stable.
+
+Before promoting a new build, also run the Redis restart and short load gates:
 
 ```powershell
 docker run -d --name java-rust-cache-redis-test -p 16379:6379 redis:8.2.1-alpine3.22
