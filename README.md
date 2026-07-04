@@ -6,7 +6,7 @@ This project intentionally does **not** use Jedis, Lettuce, Spring Data Redis, N
 
 The JAR includes the matching Windows x64 and Linux x64 native binaries. If `rust-java-rest` is already on the classpath, `java-rust-cache` reuses its native bridge; otherwise it extracts and loads its own packaged `rust_hyper` binary. A manual `java.library.path` is only needed for custom native builds.
 
-Cluster support requires Redis native ABI version `2`; Sentinel master failover refresh requires native ABI version `3`. If the same application also uses `rust-java-rest`, keep `rust-java-rest` at `3.2.4` or newer so the framework native bridge and the cache library ABI match.
+Cluster support requires Redis native ABI version `2`; Sentinel master failover refresh requires native ABI version `3`. If the same application also uses `rust-java-rest`, use the current aligned line, `rust-java-rest:3.2.7` or newer, so the framework native bridge and the cache library ABI match.
 
 By default, packaged native binaries are extracted under:
 
@@ -49,7 +49,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.2.3</version>
+  <version>0.2.4</version>
 </dependency>
 ```
 
@@ -84,7 +84,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.3"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.4"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -218,7 +218,8 @@ deliberately explicit:
   decides every JSON field.
 - `JdbcRepository` centralizes connection/query/page/lifecycle boilerplate around a `DataSource`.
 - `HikariDataSources` can create a Hikari pool from `sample.db.*`-style properties, but Hikari is an
-  optional dependency. Reader-only services do not need to load it.
+  optional dependency. Reader-only services do not need to load it. Pool tuning keys have small
+  built-in defaults, so a writer can start with only JDBC URL, driver, username and password.
 
 Example:
 

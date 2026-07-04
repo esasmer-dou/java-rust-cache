@@ -11,30 +11,34 @@ public final class HikariDataSources {
     private HikariDataSources() {}
 
     public static HikariDataSource create(Properties properties, String prefix) {
+        return new HikariDataSource(createConfig(properties, prefix));
+    }
+
+    static HikariConfig createConfig(Properties properties, String prefix) {
         String root = requirePrefix(prefix);
         HikariConfig config = new HikariConfig();
-        config.setPoolName(get(properties, root + ".pool-name"));
+        config.setPoolName(get(properties, root + ".pool-name", root + "-pool"));
         config.setDriverClassName(get(properties, root + ".driver-class-name"));
         config.setJdbcUrl(get(properties, root + ".jdbc-url"));
         config.setUsername(get(properties, root + ".username"));
         config.setPassword(getOptional(properties, root + ".password"));
-        config.setMaximumPoolSize(getInt(properties, root + ".maximum-pool-size"));
-        config.setMinimumIdle(getInt(properties, root + ".minimum-idle"));
-        config.setConnectionTimeout(getLong(properties, root + ".connection-timeout-ms"));
-        config.setValidationTimeout(getLong(properties, root + ".validation-timeout-ms"));
-        config.setIdleTimeout(getLong(properties, root + ".idle-timeout-ms"));
-        config.setMaxLifetime(getLong(properties, root + ".max-lifetime-ms"));
-        config.setLeakDetectionThreshold(getLong(properties, root + ".leak-detection-threshold-ms"));
-        config.setInitializationFailTimeout(getLong(properties, root + ".initialization-fail-timeout-ms"));
-        config.setAutoCommit(getBoolean(properties, root + ".auto-commit"));
-        config.setReadOnly(getBoolean(properties, root + ".read-only"));
-        config.setRegisterMbeans(getBoolean(properties, root + ".register-mbeans"));
+        config.setMaximumPoolSize(getInt(properties, root + ".maximum-pool-size", 2));
+        config.setMinimumIdle(getInt(properties, root + ".minimum-idle", 0));
+        config.setConnectionTimeout(getLong(properties, root + ".connection-timeout-ms", 3_000L));
+        config.setValidationTimeout(getLong(properties, root + ".validation-timeout-ms", 1_000L));
+        config.setIdleTimeout(getLong(properties, root + ".idle-timeout-ms", 30_000L));
+        config.setMaxLifetime(getLong(properties, root + ".max-lifetime-ms", 300_000L));
+        config.setLeakDetectionThreshold(getLong(properties, root + ".leak-detection-threshold-ms", 0L));
+        config.setInitializationFailTimeout(getLong(properties, root + ".initialization-fail-timeout-ms", -1L));
+        config.setAutoCommit(getBoolean(properties, root + ".auto-commit", true));
+        config.setReadOnly(getBoolean(properties, root + ".read-only", false));
+        config.setRegisterMbeans(getBoolean(properties, root + ".register-mbeans", false));
 
         String applicationName = getOptional(properties, root + ".postgresql.application-name");
         if (!applicationName.isBlank()) {
             config.addDataSourceProperty("ApplicationName", applicationName);
         }
-        return new HikariDataSource(config);
+        return config;
     }
 
     private static String get(Properties properties, String key) {
@@ -43,6 +47,11 @@ public final class HikariDataSources {
             throw new IllegalStateException("Missing required JDBC property: " + key);
         }
         return value;
+    }
+
+    private static String get(Properties properties, String key, String fallback) {
+        String value = getOptional(properties, key);
+        return value.isBlank() ? fallback : value;
     }
 
     private static String getOptional(Properties properties, String key) {
@@ -56,8 +65,11 @@ public final class HikariDataSources {
         return value == null ? "" : value.trim();
     }
 
-    private static int getInt(Properties properties, String key) {
-        String value = get(properties, key);
+    private static int getInt(Properties properties, String key, int fallback) {
+        String value = getOptional(properties, key);
+        if (value.isBlank()) {
+            return fallback;
+        }
         try {
             return Integer.parseInt(value);
         } catch (NumberFormatException e) {
@@ -65,8 +77,11 @@ public final class HikariDataSources {
         }
     }
 
-    private static long getLong(Properties properties, String key) {
-        String value = get(properties, key);
+    private static long getLong(Properties properties, String key, long fallback) {
+        String value = getOptional(properties, key);
+        if (value.isBlank()) {
+            return fallback;
+        }
         try {
             return Long.parseLong(value);
         } catch (NumberFormatException e) {
@@ -74,8 +89,11 @@ public final class HikariDataSources {
         }
     }
 
-    private static boolean getBoolean(Properties properties, String key) {
-        String value = get(properties, key);
+    private static boolean getBoolean(Properties properties, String key, boolean fallback) {
+        String value = getOptional(properties, key);
+        if (value.isBlank()) {
+            return fallback;
+        }
         if ("true".equalsIgnoreCase(value) || "1".equals(value) || "yes".equalsIgnoreCase(value)) {
             return true;
         }
