@@ -49,7 +49,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.2.2</version>
+  <version>0.2.3</version>
 </dependency>
 ```
 
@@ -84,7 +84,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.2"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.3"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -160,6 +160,9 @@ The public classes are grouped by responsibility:
 | `com.reactor.rust.cache.lock` | Redis-backed bounded lock abstraction for scheduled writers. |
 | `com.reactor.rust.cache.versioned` | Versioned JSON snapshot reader/writer API. |
 | `com.reactor.rust.cache.projection` | Declarative projection settings for reader/writer samples: namespace, TTL, interval, and lock names. |
+| `com.reactor.rust.cache.scheduler` | Projection refresh scheduler and result model for writer processes. |
+| `com.reactor.rust.cache.json` | Small JSON writer base for explicit low-allocation JSON builders. |
+| `com.reactor.rust.cache.jdbc` | Optional JDBC/Hikari helper classes for writer-side database reads. |
 | `com.reactor.rust.cache.internal.nativebridge` | JNI bridge to the native Rust Redis data plane. Treat as internal. |
 
 ## Declarative Projection Settings
@@ -203,6 +206,34 @@ public final class AppProperties implements ProjectionPropertySource {
 BEST: use projection settings to remove repeated config parsing. Keep the JSON shape, DB query, and
 cache key business decisions explicit in your application code. ANTI-PATTERN: a generic reflection
 mapper that guesses Redis keys from DTO class names.
+
+## Writer-Side Boilerplate Helpers
+
+`java-rust-cache` also includes small helper classes for cache-writer processes. These helpers are
+deliberately explicit:
+
+- `ProjectionRefreshScheduler` schedules configured projections and handles run-once mode, Redis
+  lock result logging, and TTL/config warnings.
+- `JsonWriter` provides UTF-8 JSON escaping and primitive field helpers. Your domain writer still
+  decides every JSON field.
+- `JdbcRepository` centralizes connection/query/page/lifecycle boilerplate around a `DataSource`.
+- `HikariDataSources` can create a Hikari pool from `sample.db.*`-style properties, but Hikari is an
+  optional dependency. Reader-only services do not need to load it.
+
+Example:
+
+```java
+ProjectionRefreshScheduler scheduler = ProjectionRefreshScheduler.builder()
+        .settings(projectionSettings)
+        .refresher(materializer::refreshProjection)
+        .schedulerThreads(properties.getInt("sample.writer.scheduler-threads"))
+        .runOnce(properties.getBoolean("sample.writer.run-once"))
+        .threadNamePrefix("cache-writer")
+        .build();
+```
+
+BEST: let the library own lifecycle boilerplate. Keep SQL, row mapping, JSON shape, and cache key
+business decisions in your application.
 
 ## Configuration
 
