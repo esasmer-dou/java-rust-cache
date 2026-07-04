@@ -49,7 +49,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.2.1</version>
+  <version>0.2.2</version>
 </dependency>
 ```
 
@@ -84,7 +84,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.1"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.2"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -159,7 +159,50 @@ The public classes are grouped by responsibility:
 | `com.reactor.rust.cache.api` | Read/write contracts and cache read result model. |
 | `com.reactor.rust.cache.lock` | Redis-backed bounded lock abstraction for scheduled writers. |
 | `com.reactor.rust.cache.versioned` | Versioned JSON snapshot reader/writer API. |
+| `com.reactor.rust.cache.projection` | Declarative projection settings for reader/writer samples: namespace, TTL, interval, and lock names. |
 | `com.reactor.rust.cache.internal.nativebridge` | JNI bridge to the native Rust Redis data plane. Treat as internal. |
+
+## Declarative Projection Settings
+
+Use `com.reactor.rust.cache.projection` when one application writes several Redis projections and
+another application reads the same projection list. The library resolves property overrides,
+namespace names, writer intervals, lock names, and safe TTL values. Your application still owns the
+business transformation.
+
+Writer example:
+
+```java
+List<CacheWriterProjectionSettings> projections =
+        CacheWriterProjectionSettings.resolveAll(properties, "sample.writer");
+
+for (CacheWriterProjectionSettings projection : projections) {
+    scheduler.schedule(projection, () -> materializer.refresh(projection.name()));
+}
+```
+
+Reader example:
+
+```java
+List<CacheReaderProjectionSettings> projections =
+        CacheReaderProjectionSettings.resolveAll(properties, "sample.cache.customer");
+
+CustomerCacheService service = new CustomerCacheService(cache, projections);
+```
+
+Property source example:
+
+```java
+public final class AppProperties implements ProjectionPropertySource {
+    public String get(String key) { return requiredProperty(key); }
+    public String getOptional(String key) { return optionalProperty(key); }
+    public String getRuntimeOverride(String key) { return System.getProperty(key); }
+    public String getFileOptional(String key) { return filePropertyOrNull(key); }
+}
+```
+
+BEST: use projection settings to remove repeated config parsing. Keep the JSON shape, DB query, and
+cache key business decisions explicit in your application code. ANTI-PATTERN: a generic reflection
+mapper that guesses Redis keys from DTO class names.
 
 ## Configuration
 
