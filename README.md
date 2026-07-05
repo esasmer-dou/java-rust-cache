@@ -1,5 +1,7 @@
 # java-rust-cache
 
+[English](https://github.com/esasmer-dou/java-rust-cache/blob/master/README.md) | [Turkish](https://github.com/esasmer-dou/java-rust-cache/blob/master/README.tr.md)
+
 Minimal Redis cache client for `rust-java-rest`.
 
 This project intentionally does **not** use Jedis, Lettuce, Spring Data Redis, Netty, runtime reflection, or generic object serialization. Java owns the business decision; Rust owns Redis TCP I/O and RESP encoding/decoding through the existing `rust_hyper` native library.
