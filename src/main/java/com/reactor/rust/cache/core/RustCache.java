@@ -2,6 +2,7 @@ package com.reactor.rust.cache.core;
 
 import com.reactor.rust.cache.api.RustCacheReader;
 import com.reactor.rust.cache.api.RustCacheWriter;
+import com.reactor.rust.cache.api.NativeCacheResponseHandle;
 import com.reactor.rust.cache.config.RustCacheConfig;
 import com.reactor.rust.cache.internal.nativebridge.NativeRedisBridge;
 import com.reactor.rust.cache.lock.RustCacheLocks;
@@ -11,16 +12,19 @@ import com.reactor.rust.cache.versioned.VersionedJsonCacheWriter;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 public final class RustCache implements RustCacheReader, RustCacheWriter, AutoCloseable {
 
     private final RustCacheConfig config;
     private final int clientId;
+    private final RustCacheLocks locks;
     private volatile boolean closed;
 
     private RustCache(RustCacheConfig config) {
         this.config = Objects.requireNonNull(config, "config");
         this.clientId = NativeRedisBridge.createClient(config);
+        this.locks = new RustCacheLocks(this);
     }
 
     static RustCache create(RustCacheConfig config) {
@@ -40,7 +44,7 @@ public final class RustCache implements RustCacheReader, RustCacheWriter, AutoCl
     }
 
     public RustCacheLocks locks() {
-        return new RustCacheLocks(this);
+        return locks;
     }
 
     public VersionedJsonCache versionedJson(String namespace) {
@@ -76,6 +80,22 @@ public final class RustCache implements RustCacheReader, RustCacheWriter, AutoCl
     public String getString(String key) {
         byte[] value = getBytes(key);
         return value == null ? null : new String(value, StandardCharsets.UTF_8);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> getBytesAsync(String key) {
+        ensureOpen();
+        return NativeRedisBridge.getAsync(clientId, requireKey(key), config.readTimeoutMs());
+    }
+
+    @Override
+    public CompletableFuture<NativeCacheResponseHandle> getNativeJsonAsync(String key) {
+        ensureOpen();
+        return NativeRedisBridge.getNativeJsonAsync(
+                clientId,
+                requireKey(key),
+                config.readTimeoutMs()
+        );
     }
 
     @Override
@@ -193,11 +213,40 @@ public final class RustCache implements RustCacheReader, RustCacheWriter, AutoCl
         return NativeRedisBridge.releaseLock(clientId, requireKey(key), ownerToken);
     }
 
+    public boolean publishFencedVersion(
+            String currentKey,
+            long fencingToken,
+            String version,
+            long ttlMillis) {
+        ensureOpen();
+        if (fencingToken <= 0) {
+            throw new IllegalArgumentException("fencingToken must be positive");
+        }
+        Objects.requireNonNull(version, "version");
+        if (version.isBlank()) {
+            throw new IllegalArgumentException("version must not be blank");
+        }
+        if (ttlMillis <= 0) {
+            throw new IllegalArgumentException("ttlMillis must be positive");
+        }
+        return NativeRedisBridge.publishFencedVersion(
+                clientId,
+                requireKey(currentKey),
+                fencingToken,
+                version,
+                ttlMillis
+        );
+    }
+
     @Override
-    public void close() {
+    public synchronized void close() {
         if (!closed) {
-            closed = true;
-            NativeRedisBridge.closeClient(clientId);
+            try {
+                locks.close();
+            } finally {
+                closed = true;
+                NativeRedisBridge.closeClient(clientId);
+            }
         }
     }
 

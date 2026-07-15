@@ -8,7 +8,12 @@ Bu proje bilinçli olarak Jedis, Lettuce, Spring Data Redis, Netty, runtime refl
 
 JAR içinde Windows x64 ve Linux x64 native binary dosyaları bulunur. Aynı uygulamada `rust-java-rest` zaten varsa `java-rust-cache` aynı native bridge çizgisiyle çalışır. Yoksa kendi paketlediği `rust_hyper` binary dosyasını çıkarıp yükler. Özel native build kullanmıyorsanız `java.library.path` vermeniz gerekmez.
 
-Cluster desteği için Redis native ABI version `2` gerekir. Sentinel master failover refresh için native ABI version `3` gerekir. Aynı uygulama `rust-java-rest` de kullanıyorsa `rust-java-rest:3.2.7` veya daha yeni aynı çizgiyi kullanın. Böylece framework native bridge ve cache library ABI uyumlu kalır.
+Cluster routing için Redis native ABI `2`, Sentinel master yenileme için ABI `3`, fenced snapshot
+publish için ABI `4`, async GET ve native JSON response handle için ABI `5` gerekir. Aynı uygulama
+`rust-java-rest` de kullanıyorsa `rust-java-rest:3.2.7` veya daha yeni aynı çizgiyi kullanın. Böylece
+framework native bridge ile cache library aynı binary sözleşmesini kullanır. Paketlenen provenance
+manifesti REST ABI `23`, Dubbo ABI `5`, Redis ABI `5`, kaynak revision ve platform SHA-256
+hash'lerini taşır. Eski veya uyumsuz binary startup sırasında reddedilir.
 
 Varsayılan native binary çıkarma dizini:
 
@@ -184,15 +189,19 @@ Versioned API key parçaları delimiter-safe üretilir. `:` ve non-ASCII/control
 
 Bir uygulama birden fazla Redis projection yazıyor, başka bir uygulama aynı projection listesini okuyorsa `com.reactor.rust.cache.projection` kullanın. Library property override, namespace, writer interval, lock name ve güvenli TTL değerlerini çözer. Business dönüşüm kodu yine uygulamanızda kalır.
 
-Writer örneği:
+Writer process örneği:
 
 ```java
-List<CacheWriterProjectionSettings> projections =
-        CacheWriterProjectionSettings.resolveAll(properties, "sample.writer");
+CacheProperties properties = CacheProperties.load("cache-writer.properties");
 
-for (CacheWriterProjectionSettings projection : projections) {
-    scheduler.schedule(projection, () -> materializer.refresh(projection.name()));
-}
+ProjectionWriterApplication.from(properties, "sample.writer")
+    .module(context -> {
+        Repository repository = context.manage(Repository.open(properties));
+        RustCache cache = context.manage(RustCaches.create(properties.asProperties()));
+        CustomerMaterializer materializer = new CustomerMaterializer(repository, cache, properties);
+        context.refresher(materializer::refreshProjection);
+    })
+    .run();
 ```
 
 Reader örneği:
@@ -201,10 +210,15 @@ Reader örneği:
 List<CacheReaderProjectionSettings> projections =
         CacheReaderProjectionSettings.resolveAll(properties, "sample.cache.customer");
 
-CustomerCacheService service = new CustomerCacheService(cache, projections);
+VersionedJsonProjectionReaders readers = VersionedJsonProjectionReaders.create(
+        cache, projections, properties.getLong("sample.cache.customer.version-cache-ms"));
+
+CacheReadResult customer = readers.getById("detail", customerId);
 ```
 
-Property source örneği:
+Classpath varsayılanları, `reactor.config.file` overlay dosyaları, ortam değişkenleri ve `-D` system
+property değerleri için `CacheProperties` kullanın. Config başka bir kaynaktan geliyorsa
+`ProjectionPropertySource` implement edin.
 
 ```java
 public final class AppProperties implements ProjectionPropertySource {
@@ -221,8 +235,15 @@ ANTI-PATTERN: DTO class adından Redis key tahmin eden generic reflection mapper
 
 ## Writer-Side Boilerplate Helpers
 
-`java-rust-cache`, cache-writer process'leri için küçük helper sınıflar da taşır. Bunlar bilinçli olarak explicit tutuldu:
+`java-rust-cache`, cache process'leri için küçük helper sınıflar da taşır. Bunlar bilinçli olarak açık tutulur:
 
+- `CacheProperties`: Reader ve writer için aynı property öncelik sırasını uygular.
+- `ProjectionWriterApplication`: Scheduler başlangıcını, run-once modunu, shutdown hook'u, startup
+  rollback işlemini ve kaynak kapatmayı yönetir.
+- `VersionedJsonProjectionMaterializer`: Açık projection adlarını business writer'lara bağlar ve
+  fenced lock akışını yönetir.
+- `VersionedJsonProjectionReaders`: İsimlendirilmiş reader registry'sini ve kontrollü not-ready
+  sonucunu yönetir.
 - `ProjectionRefreshScheduler`: Projection schedule, run-once mode, Redis lock sonucu loglama ve TTL/config uyarılarını yönetir.
 - `JsonWriter`: UTF-8 JSON escaping ve primitive field helper sağlar. Domain JSON alanlarına uygulama karar verir.
 - `JdbcRepository`: `DataSource` etrafında connection/query/page/lifecycle boilerplate kodunu azaltır.
@@ -231,13 +252,11 @@ ANTI-PATTERN: DTO class adından Redis key tahmin eden generic reflection mapper
 Örnek:
 
 ```java
-ProjectionRefreshScheduler scheduler = ProjectionRefreshScheduler.builder()
-        .settings(projectionSettings)
-        .refresher(materializer::refreshProjection)
-        .schedulerThreads(properties.getInt("sample.writer.scheduler-threads"))
-        .runOnce(properties.getBoolean("sample.writer.run-once"))
-        .threadNamePrefix("cache-writer")
-        .build();
+VersionedJsonProjectionMaterializer materializer =
+        VersionedJsonProjectionMaterializer.builder(cache, projectionSettings, batchSize)
+            .projection("detail", this::writeDetail)
+            .projection("campaign", this::writeCampaign)
+            .build();
 ```
 
 BEST: Lifecycle boilerplate kodunu library'ye bırakın. SQL, row mapping, JSON shape ve cache key business kararlarını uygulama kodunda açık tutun.
@@ -413,5 +432,10 @@ mvn -q test `
 
 docker rm -f java-rust-cache-redis-test
 ```
+
+Integration Redis ACL veya `requirepass` kullanıyorsa iki Maven komutuna da
+`-Dreactor.cache.redis.integration.username=...` ve
+`-Dreactor.cache.redis.integration.password=...` ekleyin. Redis yalnız parola kullanıyorsa username
+parametresini vermeyin.
 
 Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Production beklentisi şudur: bozuk socket atılır ve sonraki operation yeni Redis connection açar.

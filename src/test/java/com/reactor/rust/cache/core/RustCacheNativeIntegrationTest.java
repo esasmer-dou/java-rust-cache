@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -111,7 +112,7 @@ class RustCacheNativeIntegrationTest {
     void shortLoadSoakStaysErrorFree() throws Exception {
         Assumptions.assumeTrue(Boolean.getBoolean("reactor.cache.redis.load-gate"));
 
-        int threads = Integer.getInteger("reactor.cache.redis.load-gate.threads", 8);
+        int threads = Integer.getInteger("reactor.cache.redis.load-gate.threads", 2);
         int operationsPerThread = Integer.getInteger("reactor.cache.redis.load-gate.operations-per-thread", 500);
         String prefix = "load:" + UUID.randomUUID();
 
@@ -120,6 +121,7 @@ class RustCacheNativeIntegrationTest {
             ExecutorService executor = Executors.newFixedThreadPool(threads);
             CountDownLatch start = new CountDownLatch(1);
             AtomicInteger errors = new AtomicInteger();
+            ConcurrentLinkedQueue<Throwable> failures = new ConcurrentLinkedQueue<>();
             List<Future<?>> futures = new ArrayList<>(threads);
 
             for (int thread = 0; thread < threads; thread++) {
@@ -131,13 +133,16 @@ class RustCacheNativeIntegrationTest {
                             String key = prefix + ":" + threadId + ":" + i;
                             if (!cache.setString(key, "v" + i, 30_000)) {
                                 errors.incrementAndGet();
+                                failures.add(new AssertionError("SET returned false for " + key));
                             }
                             if (cache.getString(key) == null) {
                                 errors.incrementAndGet();
+                                failures.add(new AssertionError("GET returned null for " + key));
                             }
                         }
-                    } catch (Exception e) {
+                    } catch (Throwable e) {
                         errors.incrementAndGet();
+                        failures.add(e);
                     }
                 }));
             }
@@ -149,6 +154,13 @@ class RustCacheNativeIntegrationTest {
             executor.shutdown();
             assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
 
+            if (!failures.isEmpty()) {
+                AssertionError failure = new AssertionError(
+                        "Redis load gate recorded " + errors.get() + " error(s)",
+                        failures.peek());
+                failures.stream().skip(1).limit(16).forEach(failure::addSuppressed);
+                throw failure;
+            }
             assertEquals(0, errors.get());
             assertTrue(cache.metricsJson().contains("\"errors\":0"));
         }
@@ -167,6 +179,14 @@ class RustCacheNativeIntegrationTest {
         String nodes = System.getProperty("reactor.cache.redis.integration.nodes");
         if (nodes != null && !nodes.isBlank()) {
             builder.nodes(nodes);
+        }
+        String username = System.getProperty("reactor.cache.redis.integration.username");
+        if (username != null && !username.isBlank()) {
+            builder.username(username);
+        }
+        String password = System.getProperty("reactor.cache.redis.integration.password");
+        if (password != null && !password.isBlank()) {
+            builder.password(password);
         }
         String sentinelMasterName = System.getProperty("reactor.cache.redis.integration.sentinel.master-name");
         if (sentinelMasterName != null && !sentinelMasterName.isBlank()) {

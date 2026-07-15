@@ -13,6 +13,7 @@ public final class VersionedJsonSnapshot {
     private final RustCache cache;
     private final String namespace;
     private final String version;
+    private final long fencingToken;
     private final long dataTtlMillis;
     private final int batchSize;
     private final List<String> keys;
@@ -24,11 +25,13 @@ public final class VersionedJsonSnapshot {
             RustCache cache,
             String namespace,
             String version,
+            long fencingToken,
             long dataTtlMillis,
             int batchSize) {
         this.cache = cache;
         this.namespace = namespace;
         this.version = version;
+        this.fencingToken = fencingToken;
         this.dataTtlMillis = dataTtlMillis;
         this.batchSize = batchSize;
         this.keys = new ArrayList<>(batchSize);
@@ -61,7 +64,17 @@ public final class VersionedJsonSnapshot {
             throw new RedisCacheException("snapshot already published");
         }
         flush();
-        cache.setString(VersionedJsonCache.currentKey(namespace), version, dataTtlMillis);
+        boolean pointerUpdated = cache.publishFencedVersion(
+                VersionedJsonCache.currentKey(namespace),
+                fencingToken,
+                version,
+                dataTtlMillis
+        );
+        if (!pointerUpdated) {
+            throw new RedisCacheException(
+                    "snapshot publish rejected because a newer writer already published namespace: " + namespace
+            );
+        }
         published = true;
         return written + 1;
     }

@@ -8,7 +8,12 @@ This project intentionally does **not** use Jedis, Lettuce, Spring Data Redis, N
 
 The JAR includes the matching Windows x64 and Linux x64 native binaries. If `rust-java-rest` is already on the classpath, `java-rust-cache` reuses its native bridge; otherwise it extracts and loads its own packaged `rust_hyper` binary. A manual `java.library.path` is only needed for custom native builds.
 
-Cluster support requires Redis native ABI version `2`; Sentinel master failover refresh requires native ABI version `3`. If the same application also uses `rust-java-rest`, use the current aligned line, `rust-java-rest:3.2.7` or newer, so the framework native bridge and the cache library ABI match.
+Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires ABI `3`; fenced
+snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`. If
+the same application also uses `rust-java-rest`, use the current aligned line,
+`rust-java-rest:3.2.7` or newer, so the framework native bridge and cache library use the same
+binary contract. The packaged provenance manifest records REST ABI `23`, Dubbo ABI `5`, Redis ABI
+`5`, source revision, and platform SHA-256 hashes. Startup rejects a stale or mismatched binary.
 
 By default, packaged native binaries are extracted under:
 
@@ -174,15 +179,19 @@ another application reads the same projection list. The library resolves propert
 namespace names, writer intervals, lock names, and safe TTL values. Your application still owns the
 business transformation.
 
-Writer example:
+Writer process example:
 
 ```java
-List<CacheWriterProjectionSettings> projections =
-        CacheWriterProjectionSettings.resolveAll(properties, "sample.writer");
+CacheProperties properties = CacheProperties.load("cache-writer.properties");
 
-for (CacheWriterProjectionSettings projection : projections) {
-    scheduler.schedule(projection, () -> materializer.refresh(projection.name()));
-}
+ProjectionWriterApplication.from(properties, "sample.writer")
+    .module(context -> {
+        Repository repository = context.manage(Repository.open(properties));
+        RustCache cache = context.manage(RustCaches.create(properties.asProperties()));
+        CustomerMaterializer materializer = new CustomerMaterializer(repository, cache, properties);
+        context.refresher(materializer::refreshProjection);
+    })
+    .run();
 ```
 
 Reader example:
@@ -191,10 +200,15 @@ Reader example:
 List<CacheReaderProjectionSettings> projections =
         CacheReaderProjectionSettings.resolveAll(properties, "sample.cache.customer");
 
-CustomerCacheService service = new CustomerCacheService(cache, projections);
+VersionedJsonProjectionReaders readers = VersionedJsonProjectionReaders.create(
+        cache, projections, properties.getLong("sample.cache.customer.version-cache-ms"));
+
+CacheReadResult customer = readers.getById("detail", customerId);
 ```
 
-Property source example:
+Use `CacheProperties` for classpath defaults, `reactor.config.file` overlays, environment variables,
+and `-D` system properties. Implement `ProjectionPropertySource` yourself only when configuration
+comes from a different source.
 
 ```java
 public final class AppProperties implements ProjectionPropertySource {
@@ -211,9 +225,15 @@ mapper that guesses Redis keys from DTO class names.
 
 ## Writer-Side Boilerplate Helpers
 
-`java-rust-cache` also includes small helper classes for cache-writer processes. These helpers are
+`java-rust-cache` also includes small helper classes for cache processes. These helpers are
 deliberately explicit:
 
+- `CacheProperties` applies one predictable property precedence rule for reader and writer apps.
+- `ProjectionWriterApplication` owns scheduler startup, run-once mode, shutdown hooks, startup
+  rollback, and managed resource cleanup.
+- `VersionedJsonProjectionMaterializer` maps explicit projection names to business writers and owns
+  fenced lock execution.
+- `VersionedJsonProjectionReaders` owns the named reader registry and controlled not-ready result.
 - `ProjectionRefreshScheduler` schedules configured projections and handles run-once mode, Redis
   lock result logging, and TTL/config warnings.
 - `JsonWriter` provides UTF-8 JSON escaping and primitive field helpers. Your domain writer still
@@ -226,13 +246,11 @@ deliberately explicit:
 Example:
 
 ```java
-ProjectionRefreshScheduler scheduler = ProjectionRefreshScheduler.builder()
-        .settings(projectionSettings)
-        .refresher(materializer::refreshProjection)
-        .schedulerThreads(properties.getInt("sample.writer.scheduler-threads"))
-        .runOnce(properties.getBoolean("sample.writer.run-once"))
-        .threadNamePrefix("cache-writer")
-        .build();
+VersionedJsonProjectionMaterializer materializer =
+        VersionedJsonProjectionMaterializer.builder(cache, projectionSettings, batchSize)
+            .projection("detail", this::writeDetail)
+            .projection("campaign", this::writeCampaign)
+            .build();
 ```
 
 BEST: let the library own lifecycle boilerplate. Keep SQL, row mapping, JSON shape, and cache key
@@ -399,5 +417,10 @@ mvn -q test `
 
 docker rm -f java-rust-cache-redis-test
 ```
+
+If the integration Redis uses ACL or `requirepass`, add
+`-Dreactor.cache.redis.integration.username=...` and
+`-Dreactor.cache.redis.integration.password=...` to both Maven commands. Omit the username for a
+password-only Redis configuration.
 
 The reconnect gate intentionally allows the first operation after restart to fail. The production expectation is that the failed socket is discarded and the next operation opens a fresh Redis connection.

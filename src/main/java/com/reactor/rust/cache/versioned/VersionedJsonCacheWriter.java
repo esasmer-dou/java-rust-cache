@@ -5,11 +5,8 @@ import com.reactor.rust.cache.lock.CacheLock;
 
 import java.time.Instant;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicLong;
 
 public final class VersionedJsonCacheWriter {
-
-    private static final AtomicLong VERSION_SEQUENCE = new AtomicLong();
 
     private final RustCache cache;
     private final String namespace;
@@ -48,8 +45,19 @@ public final class VersionedJsonCacheWriter {
         if (dataTtlMillis <= 0) {
             throw new IllegalArgumentException("dataTtlMillis must be positive");
         }
-        String version = newVersion();
-        VersionedJsonSnapshot snapshot = new VersionedJsonSnapshot(cache, namespace, version, dataTtlMillis, batchSize);
+        long fencingToken = cache.increment(VersionedJsonCache.fenceKey(namespace));
+        if (fencingToken <= 0) {
+            throw new IllegalStateException("Redis returned an invalid snapshot fencing token");
+        }
+        String version = newVersion(fencingToken);
+        VersionedJsonSnapshot snapshot = new VersionedJsonSnapshot(
+                cache,
+                namespace,
+                version,
+                fencingToken,
+                dataTtlMillis,
+                batchSize
+        );
         callback.write(snapshot);
         if (lock != null) {
             lock.ensureValid();
@@ -62,8 +70,8 @@ public final class VersionedJsonCacheWriter {
         return SnapshotResult.publishedResult(version, written);
     }
 
-    private static String newVersion() {
-        return Instant.now().toEpochMilli() + "-" + VERSION_SEQUENCE.incrementAndGet();
+    private static String newVersion(long fencingToken) {
+        return Instant.now().toEpochMilli() + "-" + fencingToken;
     }
 
     @FunctionalInterface

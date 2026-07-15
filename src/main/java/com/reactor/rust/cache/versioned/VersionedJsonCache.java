@@ -76,6 +76,30 @@ public final class VersionedJsonCache {
         return namespace + ":current";
     }
 
+    static String fenceKey(String namespace) {
+        return namespace + ":fence-sequence";
+    }
+
+    static String encodeCurrentVersion(long fencingToken, String version) {
+        return fencingToken + "|" + version;
+    }
+
+    static String decodeCurrentVersion(String encoded) {
+        if (encoded == null) {
+            return null;
+        }
+        int separator = encoded.indexOf('|');
+        if (separator <= 0 || separator == encoded.length() - 1) {
+            return encoded;
+        }
+        for (int i = 0; i < separator; i++) {
+            if (!Character.isDigit(encoded.charAt(i))) {
+                return encoded;
+            }
+        }
+        return encoded.substring(separator + 1);
+    }
+
     static String idKey(String namespace, String version, long id) {
         return namespace + ":v:" + version + ":id:" + id;
     }

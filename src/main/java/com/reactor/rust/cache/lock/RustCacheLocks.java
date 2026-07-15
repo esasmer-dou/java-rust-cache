@@ -6,27 +6,58 @@ import com.reactor.rust.cache.core.RedisCacheException;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Objects;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public final class RustCacheLocks {
+public final class RustCacheLocks implements AutoCloseable {
 
-    private static final SecureRandom TOKEN_RANDOM = new SecureRandom();
+    private static final AtomicInteger THREAD_SEQUENCE = new AtomicInteger();
 
     private final RustCache cache;
+    private final ScheduledThreadPoolExecutor renewalExecutor;
+    private final Set<CacheLock> activeLocks = ConcurrentHashMap.newKeySet();
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     public RustCacheLocks(RustCache cache) {
         this.cache = Objects.requireNonNull(cache, "cache");
+        ThreadFactory factory = task -> {
+            Thread thread = new Thread(
+                    null,
+                    task,
+                    "java-rust-cache-lock-renewer-" + THREAD_SEQUENCE.incrementAndGet(),
+                    256L * 1024L);
+            thread.setDaemon(true);
+            return thread;
+        };
+        this.renewalExecutor = new ScheduledThreadPoolExecutor(1, factory);
+        this.renewalExecutor.setRemoveOnCancelPolicy(true);
+        this.renewalExecutor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        this.renewalExecutor.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
     }
 
     public CacheLock tryAcquire(String name, long ttlMillis) {
+        ensureOpen();
         String lockKey = lockKey(name);
         String ownerToken = ownerToken();
         if (ttlMillis <= 0) {
             throw new IllegalArgumentException("ttlMillis must be positive");
         }
-        return cache.acquireLock(lockKey, ownerToken, ttlMillis)
-                ? new CacheLock(cache, lockKey, ownerToken)
-                : null;
+        if (!cache.acquireLock(lockKey, ownerToken, ttlMillis)) {
+            return null;
+        }
+        CacheLock lock = new CacheLock(cache, lockKey, ownerToken, activeLocks::remove);
+        activeLocks.add(lock);
+        if (closed.get()) {
+            lock.close();
+            throw new RedisCacheException("Redis lock manager is closed");
+        }
+        return lock;
     }
 
     public boolean runOnce(String name, long ttlMillis, ThrowingRunnable task) {
@@ -43,46 +74,55 @@ public final class RustCacheLocks {
         if (lock == null) {
             return false;
         }
-        AtomicBoolean running = new AtomicBoolean(true);
-        Thread renewer = startRenewer(lock, ttlMillis, running);
+        ScheduledFuture<?> renewal = null;
         try (lock) {
+            ensureOpen();
+            lock.ensureValid();
+            renewal = startRenewer(lock, ttlMillis);
             task.run(lock);
             lock.ensureValid();
             return true;
         } catch (Exception e) {
             throw new RedisCacheException("Locked cache task failed: " + name, e);
         } finally {
-            running.set(false);
-            if (renewer != null) {
-                renewer.interrupt();
+            if (renewal != null) {
+                renewal.cancel(true);
             }
         }
     }
 
-    private static Thread startRenewer(CacheLock lock, long ttlMillis, AtomicBoolean running) {
-        long sleepMillis = Math.max(250L, ttlMillis / 3L);
-        Thread thread = new Thread(() -> {
-            while (running.get()) {
-                try {
-                    Thread.sleep(sleepMillis);
-                } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-                try {
-                    if (running.get() && !lock.renew(ttlMillis)) {
-                        lock.markLost();
-                        return;
-                    }
-                } catch (RuntimeException e) {
+    private ScheduledFuture<?> startRenewer(CacheLock lock, long ttlMillis) {
+        long intervalMillis = Math.max(1L, ttlMillis / 3L);
+        return renewalExecutor.scheduleWithFixedDelay(() -> {
+            try {
+                if (!lock.renew(ttlMillis)) {
                     lock.markLost();
-                    return;
+                }
+            } catch (RuntimeException e) {
+                lock.markLost();
+            }
+        }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+    }
+
+    @Override
+    public void close() {
+        if (closed.compareAndSet(false, true)) {
+            renewalExecutor.shutdownNow();
+            for (CacheLock lock : activeLocks) {
+                try {
+                    lock.close();
+                } catch (RuntimeException ignored) {
+                    // The lease still expires by TTL if Redis is unavailable during shutdown.
                 }
             }
-        }, "java-rust-cache-lock-renewer");
-        thread.setDaemon(true);
-        thread.start();
-        return thread;
+            activeLocks.clear();
+        }
+    }
+
+    private void ensureOpen() {
+        if (closed.get()) {
+            throw new RedisCacheException("Redis lock manager is closed");
+        }
     }
 
     private static String lockKey(String name) {
@@ -94,8 +134,12 @@ public final class RustCacheLocks {
 
     private static String ownerToken() {
         byte[] bytes = new byte[16];
-        TOKEN_RANDOM.nextBytes(bytes);
+        TokenRandomHolder.INSTANCE.nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
+    }
+
+    private static final class TokenRandomHolder {
+        private static final SecureRandom INSTANCE = new SecureRandom();
     }
 
     @FunctionalInterface

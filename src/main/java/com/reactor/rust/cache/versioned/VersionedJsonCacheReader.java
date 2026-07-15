@@ -55,7 +55,9 @@ public final class VersionedJsonCacheReader {
         if (version != null && now < cachedVersionUntilMillis) {
             return version;
         }
-        version = cache.getString(VersionedJsonCache.currentKey(namespace));
+        version = VersionedJsonCache.decodeCurrentVersion(
+                cache.getString(VersionedJsonCache.currentKey(namespace))
+        );
         if (version != null && versionCacheMillis > 0) {
             cachedVersion = version;
             cachedVersionUntilMillis = now + versionCacheMillis;

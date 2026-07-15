@@ -1,18 +1,18 @@
 package com.reactor.rust.cache.internal.nativebridge;
 
 import com.reactor.rust.cache.config.RustCacheConfig;
+import com.reactor.rust.cache.api.NativeCacheResponseHandle;
 import com.reactor.rust.cache.core.RedisCacheException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 public final class NativeRedisBridge {
 
@@ -20,6 +20,9 @@ public final class NativeRedisBridge {
     private static final String NATIVE_EXTRACT_DIR_ENV = "REACTOR_CACHE_NATIVE_EXTRACT_DIR";
     private static final int REDIS_TOPOLOGY_ABI_VERSION = 2;
     private static final int REDIS_SENTINEL_MASTER_CHECK_ABI_VERSION = 3;
+    private static final int REDIS_FENCED_PUBLISH_ABI_VERSION = 4;
+    private static final int REDIS_ASYNC_GET_ABI_VERSION = 5;
+    private static final PendingNativeCacheOperations PENDING = new PendingNativeCacheOperations();
 
     private NativeRedisBridge() {}
 
@@ -122,6 +125,52 @@ public final class NativeRedisBridge {
         return nativeGet(clientId, key);
     }
 
+    public static CompletableFuture<byte[]> getAsync(
+            int clientId,
+            String key,
+            int timeoutMs) {
+        requireAsyncAbi();
+        PendingNativeCacheOperations.PendingBytes pending = PENDING.beginBytes(clientId);
+        try {
+            boolean accepted = nativeGetAsync(clientId, key, pending.callbackId());
+            if (accepted) {
+                PENDING.accepted(pending.callbackId(), pending.future(), timeoutMs);
+            } else {
+                PENDING.rejected(
+                        pending.callbackId(),
+                        pending.future(),
+                        "Native Redis async read admission rejected the call"
+                );
+            }
+        } catch (RuntimeException | LinkageError error) {
+            PENDING.rejected(pending.callbackId(), pending.future(), error);
+        }
+        return pending.future();
+    }
+
+    public static CompletableFuture<NativeCacheResponseHandle> getNativeJsonAsync(
+            int clientId,
+            String key,
+            int timeoutMs) {
+        requireAsyncAbi();
+        PendingNativeCacheOperations.PendingNativeJson pending = PENDING.beginNativeJson(clientId);
+        try {
+            boolean accepted = nativeGetNativeJsonAsync(clientId, key, pending.callbackId());
+            if (accepted) {
+                PENDING.accepted(pending.callbackId(), pending.future(), timeoutMs);
+            } else {
+                PENDING.rejected(
+                        pending.callbackId(),
+                        pending.future(),
+                        "Native Redis async read admission rejected the call"
+                );
+            }
+        } catch (RuntimeException | LinkageError error) {
+            PENDING.rejected(pending.callbackId(), pending.future(), error);
+        }
+        return pending.future();
+    }
+
     public static byte[][] mget(int clientId, String[] keys) {
         return nativeMget(clientId, keys);
     }
@@ -170,8 +219,35 @@ public final class NativeRedisBridge {
         return nativeReleaseLock(clientId, key, ownerToken);
     }
 
+    public static boolean publishFencedVersion(
+            int clientId,
+            String currentKey,
+            long fencingToken,
+            String version,
+            long ttlMillis) {
+        int abiVersion = nativeAbiVersionOrLegacy();
+        if (abiVersion < REDIS_FENCED_PUBLISH_ABI_VERSION) {
+            throw new RedisCacheException(
+                    "Fenced snapshot publishing requires rust_hyper Redis ABI "
+                            + REDIS_FENCED_PUBLISH_ABI_VERSION
+                            + " or newer. Loaded Redis ABI version: " + abiVersion
+            );
+        }
+        return nativePublishFencedVersion(clientId, currentKey, fencingToken, version, ttlMillis);
+    }
+
     public static void closeClient(int clientId) {
-        nativeCloseClient(clientId);
+        try {
+            nativeCloseClient(clientId);
+        } finally {
+            PENDING.closeClient(clientId);
+        }
+    }
+
+    public static void releaseResponseHandle(int nativeId) {
+        if (nativeId > 0) {
+            nativeReleaseResponseHandle(nativeId);
+        }
     }
 
     public static String metricsJson() {
@@ -180,6 +256,35 @@ public final class NativeRedisBridge {
 
     public static void resetMetrics() {
         nativeResetMetrics();
+    }
+
+    private static void requireAsyncAbi() {
+        int abiVersion = nativeAbiVersionOrLegacy();
+        if (abiVersion < REDIS_ASYNC_GET_ABI_VERSION) {
+            throw new RedisCacheException(
+                    "Async Redis reads require rust_hyper Redis ABI "
+                            + REDIS_ASYNC_GET_ABI_VERSION
+                            + " or newer. Loaded Redis ABI version: " + abiVersion
+            );
+        }
+    }
+
+    private static boolean completeGetAsync(
+            long callbackId,
+            byte[] value,
+            String errorMessage) {
+        return PENDING.completeBytes(callbackId, value, errorMessage);
+    }
+
+    private static boolean completeNativeJsonGetAsync(
+            long callbackId,
+            int nativeId,
+            String errorMessage) {
+        return PENDING.completeNativeJson(callbackId, nativeId, errorMessage);
+    }
+
+    static int pendingCountForTest() {
+        return PENDING.size();
     }
 
     private static void loadNativeLibrary() {
@@ -245,7 +350,14 @@ public final class NativeRedisBridge {
                 return new UnsatisfiedLinkError("Missing packaged native resource: " + resource);
             }
             byte[] bytes = input.readAllBytes();
-            Path library = extractNativeLibrary(bytes, resource);
+            String platform = resource.contains("windows-x64") ? "windows-x64" : "linux-x64";
+            String hash = NativeCacheProvenance.verifyPackagedBinary(
+                    NativeRedisBridge.class.getClassLoader(),
+                    platform,
+                    bytes,
+                    REDIS_ASYNC_GET_ABI_VERSION
+            );
+            Path library = extractNativeLibrary(bytes, resource, hash);
             System.load(library.toAbsolutePath().toString());
             return null;
         } catch (UnsatisfiedLinkError e) {
@@ -257,20 +369,23 @@ public final class NativeRedisBridge {
         }
     }
 
-    private static Path extractNativeLibrary(byte[] bytes, String resource) throws IOException {
-        String hash = sha256(bytes);
+    private static Path extractNativeLibrary(byte[] bytes, String resource, String hash) throws IOException {
         String fileName = resource.substring(resource.lastIndexOf('/') + 1);
         Path directory = nativeExtractRoot().resolve(hash.substring(0, 16));
         Files.createDirectories(directory);
         Path library = directory.resolve(fileName);
-        if (Files.exists(library)) {
+        if (Files.exists(library)
+                && Files.size(library) == bytes.length
+                && hash.equals(NativeCacheProvenance.sha256(library))) {
             return library;
         }
 
         Path temp = Files.createTempFile(directory, fileName, ".tmp");
         Files.write(temp, bytes);
         try {
-            Files.move(temp, library, StandardCopyOption.ATOMIC_MOVE);
+            Files.move(temp, library, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException ignored) {
+            Files.move(temp, library, StandardCopyOption.REPLACE_EXISTING);
         } catch (FileAlreadyExistsException ignored) {
             Files.deleteIfExists(temp);
         }
@@ -292,14 +407,6 @@ public final class NativeRedisBridge {
                     + NATIVE_EXTRACT_DIR_PROPERTY + " or " + NATIVE_EXTRACT_DIR_ENV);
         }
         return Path.of(home, ".java-rust-cache", "native");
-    }
-
-    private static String sha256(byte[] bytes) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (NoSuchAlgorithmException e) {
-            throw new RedisCacheException("SHA-256 digest is not available", e);
-        }
     }
 
     private static String platformResource() {
@@ -382,6 +489,12 @@ public final class NativeRedisBridge {
 
     private static native byte[] nativeGet(int clientId, String key);
 
+    private static native boolean nativeGetAsync(int clientId, String key, long callbackId);
+
+    private static native boolean nativeGetNativeJsonAsync(int clientId, String key, long callbackId);
+
+    private static native void nativeReleaseResponseHandle(int nativeId);
+
     private static native byte[][] nativeMget(int clientId, String[] keys);
 
     private static native boolean nativeExists(int clientId, String key);
@@ -405,6 +518,13 @@ public final class NativeRedisBridge {
     private static native boolean nativeRenewLock(int clientId, String key, String ownerToken, long ttlMillis);
 
     private static native boolean nativeReleaseLock(int clientId, String key, String ownerToken);
+
+    private static native boolean nativePublishFencedVersion(
+            int clientId,
+            String currentKey,
+            long fencingToken,
+            String version,
+            long ttlMillis);
 
     private static native void nativeCloseClient(int clientId);
 

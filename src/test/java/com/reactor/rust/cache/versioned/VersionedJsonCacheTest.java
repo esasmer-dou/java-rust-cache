@@ -36,4 +36,11 @@ class VersionedJsonCacheTest {
         assertThrows(IllegalArgumentException.class, () -> VersionedJsonCache.requireBatchSize(0));
         assertThrows(IllegalArgumentException.class, () -> VersionedJsonCache.requireBatchSize(4_097));
     }
+
+    @Test
+    void decodesFencedPointersAndKeepsLegacyPointersCompatible() {
+        assertEquals("1700000000000-42", VersionedJsonCache.decodeCurrentVersion("42|1700000000000-42"));
+        assertEquals("1700000000000-legacy", VersionedJsonCache.decodeCurrentVersion("1700000000000-legacy"));
+        assertEquals("not-a-token|version", VersionedJsonCache.decodeCurrentVersion("not-a-token|version"));
+    }
 }

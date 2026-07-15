@@ -4,19 +4,22 @@ import com.reactor.rust.cache.core.RustCache;
 import com.reactor.rust.cache.core.RedisCacheException;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 
 public final class CacheLock implements AutoCloseable {
 
     private final RustCache cache;
     private final String key;
     private final String ownerToken;
+    private final Consumer<CacheLock> closeListener;
     private volatile boolean closed;
     private volatile boolean lost;
 
-    CacheLock(RustCache cache, String key, String ownerToken) {
+    CacheLock(RustCache cache, String key, String ownerToken, Consumer<CacheLock> closeListener) {
         this.cache = Objects.requireNonNull(cache, "cache");
         this.key = Objects.requireNonNull(key, "key");
         this.ownerToken = Objects.requireNonNull(ownerToken, "ownerToken");
+        this.closeListener = Objects.requireNonNull(closeListener, "closeListener");
     }
 
     public boolean renew(long ttlMillis) {
@@ -54,10 +57,14 @@ public final class CacheLock implements AutoCloseable {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         if (!closed) {
             closed = true;
-            cache.releaseLock(key, ownerToken);
+            try {
+                cache.releaseLock(key, ownerToken);
+            } finally {
+                closeListener.accept(this);
+            }
         }
     }
 }
