@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class CachePropertiesTest {
@@ -32,5 +33,13 @@ class CachePropertiesTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> CacheProperties.from(values).getBoolean("sample.enabled"));
+    }
+
+    @Test
+    void typedDefaultsAreUsedOnlyWhenAValueIsMissing() {
+        CacheProperties properties = CacheProperties.from(new Properties());
+
+        assertEquals(262_144L, properties.getLong("sample.stack-bytes", 262_144L));
+        assertFalse(properties.getBoolean("sample.enabled", false));
     }
 }

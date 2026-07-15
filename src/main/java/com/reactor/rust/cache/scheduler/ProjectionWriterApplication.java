@@ -19,10 +19,30 @@ public final class ProjectionWriterApplication {
     public static Builder from(CacheProperties properties, String rootPrefix) {
         Objects.requireNonNull(properties, "properties");
         String prefix = requireText(rootPrefix, "rootPrefix");
-        return new Builder()
+        Builder builder = new Builder();
+        builder.properties = properties;
+        builder.rootPrefix = prefix;
+        return builder
                 .settings(CacheWriterProjectionSettings.resolveAll(properties, prefix))
                 .schedulerThreads(properties.getInt(prefix + ".scheduler-threads"))
+                .schedulerThreadStackBytes(properties.getLong(
+                        prefix + ".scheduler-thread-stack-bytes", 256L * 1024L))
+                .firstRunTimeoutMillis(properties.getLong(prefix + ".first-run-timeout-ms", 60_000L))
+                .threadNamePrefix(properties.get(prefix + ".thread-name-prefix", "cache-writer"))
+                .shutdownThreadName(properties.get(prefix + ".shutdown-thread-name", "cache-writer-shutdown"))
                 .runOnce(properties.getBoolean(prefix + ".run-once"));
+    }
+
+    public static void run(String classpathResource, String rootPrefix, Module... modules) {
+        run(CacheProperties.load(classpathResource), rootPrefix, modules);
+    }
+
+    public static void run(CacheProperties properties, String rootPrefix, Module... modules) {
+        configureModules(from(properties, rootPrefix), modules).run();
+    }
+
+    public static RunningWriter start(CacheProperties properties, String rootPrefix, Module... modules) {
+        return configureModules(from(properties, rootPrefix), modules).start();
     }
 
     public static Builder builder() {
@@ -48,6 +68,20 @@ public final class ProjectionWriterApplication {
             return managed;
         }
 
+        public CacheProperties properties() {
+            if (builder.properties == null) {
+                throw new IllegalStateException("Cache properties are available only when created with from(...)");
+            }
+            return builder.properties;
+        }
+
+        public String rootPrefix() {
+            if (builder.rootPrefix == null) {
+                throw new IllegalStateException("Root prefix is available only when created with from(...)");
+            }
+            return builder.rootPrefix;
+        }
+
         public ModuleContext refresher(ProjectionRefreshScheduler.ProjectionRefresher refresher) {
             builder.refresher(refresher);
             return this;
@@ -67,6 +101,8 @@ public final class ProjectionWriterApplication {
         private String threadNamePrefix = "cache-writer";
         private String shutdownThreadName = "cache-writer-shutdown";
         private ProjectionRefreshObserver observer = ProjectionRefreshObserver.console();
+        private CacheProperties properties;
+        private String rootPrefix;
         private boolean started;
 
         public Builder settings(List<CacheWriterProjectionSettings> settings) {
@@ -190,6 +226,17 @@ public final class ProjectionWriterApplication {
                 }
             }
         }
+    }
+
+    private static Builder configureModules(Builder builder, Module... modules) {
+        Objects.requireNonNull(modules, "modules");
+        if (modules.length == 0) {
+            throw new IllegalArgumentException("At least one projection writer module is required");
+        }
+        for (Module module : modules) {
+            builder.module(Objects.requireNonNull(module, "module"));
+        }
+        return builder;
     }
 
     public static final class RunningWriter implements AutoCloseable {

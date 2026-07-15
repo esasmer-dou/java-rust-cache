@@ -11,7 +11,7 @@ The JAR includes the matching Windows x64 and Linux x64 native binaries. If `rus
 Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires ABI `3`; fenced
 snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`. If
 the same application also uses `rust-java-rest`, use the current aligned line,
-`rust-java-rest:3.2.7` or newer, so the framework native bridge and cache library use the same
+`rust-java-rest:3.3.1` or newer, so the framework native bridge and cache library use the same
 binary contract. The packaged provenance manifest records REST ABI `23`, Dubbo ABI `5`, Redis ABI
 `5`, source revision, and platform SHA-256 hashes. Startup rejects a stale or mismatched binary.
 
@@ -56,7 +56,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.2.4</version>
+  <version>0.3.1</version>
 </dependency>
 ```
 
@@ -91,7 +91,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.4"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.3.1"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -182,17 +182,30 @@ business transformation.
 Writer process example:
 
 ```java
-CacheProperties properties = CacheProperties.load("cache-writer.properties");
+public final class CacheWriterApplication {
+    public static void main(String[] args) {
+        ProjectionWriterApplication.run(
+                "cache-writer.properties",
+                "sample.writer",
+                CacheWriterModule.INSTANCE);
+    }
+}
+```
 
-ProjectionWriterApplication.from(properties, "sample.writer")
-    .module(context -> {
+The named module keeps the business wiring explicit:
+
+```java
+public void configure(ProjectionWriterApplication.ModuleContext context) {
+        CacheProperties properties = context.properties();
         Repository repository = context.manage(Repository.open(properties));
         RustCache cache = context.manage(RustCaches.create(properties.asProperties()));
         CustomerMaterializer materializer = new CustomerMaterializer(repository, cache, properties);
         context.refresher(materializer::refreshProjection);
-    })
-    .run();
+}
 ```
+
+Use the builder only for advanced scheduler customization. The simple launcher still owns shutdown,
+startup rollback, loaded properties, bounded scheduler threads, and managed resources.
 
 Reader example:
 

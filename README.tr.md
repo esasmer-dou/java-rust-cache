@@ -10,7 +10,7 @@ JAR içinde Windows x64 ve Linux x64 native binary dosyaları bulunur. Aynı uyg
 
 Cluster routing için Redis native ABI `2`, Sentinel master yenileme için ABI `3`, fenced snapshot
 publish için ABI `4`, async GET ve native JSON response handle için ABI `5` gerekir. Aynı uygulama
-`rust-java-rest` de kullanıyorsa `rust-java-rest:3.2.7` veya daha yeni aynı çizgiyi kullanın. Böylece
+`rust-java-rest` de kullanıyorsa `rust-java-rest:3.3.1` veya daha yeni aynı çizgiyi kullanın. Böylece
 framework native bridge ile cache library aynı binary sözleşmesini kullanır. Paketlenen provenance
 manifesti REST ABI `23`, Dubbo ABI `5`, Redis ABI `5`, kaynak revision ve platform SHA-256
 hash'lerini taşır. Eski veya uyumsuz binary startup sırasında reddedilir.
@@ -58,7 +58,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.2.4</version>
+  <version>0.3.1</version>
 </dependency>
 ```
 
@@ -93,7 +93,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.2.4"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.3.1"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -192,17 +192,30 @@ Bir uygulama birden fazla Redis projection yazıyor, başka bir uygulama aynı p
 Writer process örneği:
 
 ```java
-CacheProperties properties = CacheProperties.load("cache-writer.properties");
+public final class CacheWriterApplication {
+    public static void main(String[] args) {
+        ProjectionWriterApplication.run(
+                "cache-writer.properties",
+                "sample.writer",
+                CacheWriterModule.INSTANCE);
+    }
+}
+```
 
-ProjectionWriterApplication.from(properties, "sample.writer")
-    .module(context -> {
+Named module, business wiring akışını açık tutar:
+
+```java
+public void configure(ProjectionWriterApplication.ModuleContext context) {
+        CacheProperties properties = context.properties();
         Repository repository = context.manage(Repository.open(properties));
         RustCache cache = context.manage(RustCaches.create(properties.asProperties()));
         CustomerMaterializer materializer = new CustomerMaterializer(repository, cache, properties);
         context.refresher(materializer::refreshProjection);
-    })
-    .run();
+}
 ```
+
+Builder yalnızca ileri scheduler ayarları için kullanılmalıdır. Basit launcher da shutdown, başlangıç
+hatasında geri alma, property yükleme, sınırlı scheduler thread'leri ve kaynak yönetimini korur.
 
 Reader örneği:
 
