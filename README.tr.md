@@ -11,9 +11,9 @@ JAR içinde Windows x64 ve Linux x64 native binary dosyaları bulunur. Aynı uyg
 Cluster routing için Redis native ABI `2`, Sentinel master yenileme için ABI `3`, fenced snapshot
 publish için ABI `4`, async GET ve native JSON response handle için ABI `5`, role göre native
 transport plane ayırmak için ABI `6` gerekir. Aynı uygulama
-`rust-java-rest` de kullanıyorsa `rust-java-rest:3.4.0` veya daha yeni aynı çizgiyi kullanın. Böylece
+`rust-java-rest` de kullanıyorsa `rust-java-rest:3.4.1` veya daha yeni aynı çizgiyi kullanın. Böylece
 framework native bridge ile cache library aynı binary sözleşmesini kullanır. Paketlenen provenance
-manifesti REST ABI `24`, Dubbo ABI `6`, Redis ABI `6`, kaynak revision ve platform SHA-256
+manifesti REST ABI `24`, Dubbo ABI `7`, Redis ABI `6`, kaynak revision ve platform SHA-256
 hash'lerini taşır. Eski veya uyumsuz binary startup sırasında reddedilir.
 
 Varsayılan native binary çıkarma dizini:
@@ -59,7 +59,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.4.0</version>
+  <version>0.4.1</version>
 </dependency>
 ```
 
@@ -94,7 +94,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.4.0"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.4.1"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -471,4 +471,4 @@ parametresini vermeyin.
 
 Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Production beklentisi şudur: bozuk socket atılır ve sonraki operation yeni Redis connection açar.
 
-Sürüm ayrıntıları: [java-rust-cache 0.4.0](docs/RELEASE_NOTES_v0.4.0.md).
+Sürüm ayrıntıları: [java-rust-cache 0.4.1](docs/RELEASE_NOTES_v0.4.1.md).

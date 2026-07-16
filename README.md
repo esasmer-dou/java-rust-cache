@@ -12,8 +12,8 @@ Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires 
 snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`;
 role-specific native transport planes require ABI `6`. If
 the same application also uses `rust-java-rest`, use the current aligned line,
-`rust-java-rest:3.4.0` or newer, so the framework native bridge and cache library use the same
-binary contract. The packaged provenance manifest records REST ABI `24`, Dubbo ABI `6`, Redis ABI
+`rust-java-rest:3.4.1` or newer, so the framework native bridge and cache library use the same
+binary contract. The packaged provenance manifest records REST ABI `24`, Dubbo ABI `7`, Redis ABI
 `6`, source revision, and platform SHA-256 hashes. Startup rejects a stale or mismatched binary.
 
 By default, packaged native binaries are extracted under:
@@ -57,7 +57,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.4.0</version>
+  <version>0.4.1</version>
 </dependency>
 ```
 
@@ -92,7 +92,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.4.0"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.4.1"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -456,4 +456,4 @@ password-only Redis configuration.
 
 The reconnect gate intentionally allows the first operation after restart to fail. The production expectation is that the failed socket is discarded and the next operation opens a fresh Redis connection.
 
-Release details: [java-rust-cache 0.4.0](docs/RELEASE_NOTES_v0.4.0.md).
+Release details: [java-rust-cache 0.4.1](docs/RELEASE_NOTES_v0.4.1.md).
