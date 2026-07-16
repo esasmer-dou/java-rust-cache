@@ -18,11 +18,11 @@ class NativeCacheProvenanceTest {
         String hash = NativeCacheProvenance.sha256(binary);
         ClassLoader loader = manifestLoader("""
                 schema=2
-                redis.abi=5
+                redis.abi=6
                 windows-x64.sha256=%s
                 """.formatted(hash));
 
-        assertEquals(hash, NativeCacheProvenance.verifyPackagedBinary(loader, "windows-x64", binary, 5));
+        assertEquals(hash, NativeCacheProvenance.verifyPackagedBinary(loader, "windows-x64", binary, 6));
     }
 
     @Test
@@ -36,7 +36,7 @@ class NativeCacheProvenanceTest {
 
         assertThrows(
                 RedisCacheException.class,
-                () -> NativeCacheProvenance.verifyPackagedBinary(loader, "windows-x64", binary, 5)
+                () -> NativeCacheProvenance.verifyPackagedBinary(loader, "windows-x64", binary, 6)
         );
     }
 

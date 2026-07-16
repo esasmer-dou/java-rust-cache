@@ -1,6 +1,7 @@
 package com.reactor.rust.cache.core;
 
 import com.reactor.rust.cache.config.RustCacheConfig;
+import com.reactor.rust.cache.config.RedisAccessMode;
 import com.reactor.rust.cache.lock.CacheLock;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -25,9 +26,31 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RustCacheNativeIntegrationTest {
+
+    @Test
+    void allocatesOnlyTheConfiguredTransportPlane() {
+        Assumptions.assumeTrue(Boolean.getBoolean("reactor.cache.redis.integration"));
+
+        try (RustCache readOnly = RustCaches.create(integrationConfig(RedisAccessMode.READ_ONLY))) {
+            String metrics = readOnly.metricsJson();
+            assertTrue(metrics.contains("\"clients\":1"), metrics);
+            assertTrue(metrics.contains("\"read_capable_clients\":1"), metrics);
+            assertTrue(metrics.contains("\"write_capable_clients\":0"), metrics);
+            assertThrows(RedisCacheException.class, () -> readOnly.setString("forbidden", "value", 1_000));
+        }
+
+        try (RustCache writeOnly = RustCaches.create(integrationConfig(RedisAccessMode.WRITE_ONLY))) {
+            String metrics = writeOnly.metricsJson();
+            assertTrue(metrics.contains("\"clients\":1"), metrics);
+            assertTrue(metrics.contains("\"read_capable_clients\":0"), metrics);
+            assertTrue(metrics.contains("\"write_capable_clients\":1"), metrics);
+            assertThrows(RedisCacheException.class, () -> writeOnly.getString("forbidden"));
+        }
+    }
 
     @Test
     void exercisesNativeRedisOperations() {
@@ -167,7 +190,12 @@ class RustCacheNativeIntegrationTest {
     }
 
     private static RustCacheConfig integrationConfig() {
+        return integrationConfig(RedisAccessMode.READ_WRITE);
+    }
+
+    private static RustCacheConfig integrationConfig(RedisAccessMode accessMode) {
         RustCacheConfig.Builder builder = RustCacheConfig.builder()
+                .accessMode(accessMode)
                 .topology(System.getProperty("reactor.cache.redis.integration.topology", "standalone"))
                 .host(System.getProperty("reactor.cache.redis.integration.host", "127.0.0.1"))
                 .port(Integer.getInteger("reactor.cache.redis.integration.port", 6379))

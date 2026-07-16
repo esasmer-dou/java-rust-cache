@@ -17,6 +17,7 @@ class RustCacheConfigTest {
         properties.setProperty("reactor.cache.redis.database", "2");
         properties.setProperty("reactor.cache.redis.read-connections", "8");
         properties.setProperty("reactor.cache.redis.write-connections", "3");
+        properties.setProperty("reactor.cache.redis.access-mode", "read-only");
 
         RustCacheConfig config = RustCacheConfig.fromProperties(properties);
 
@@ -26,7 +27,17 @@ class RustCacheConfigTest {
         assertEquals(8, config.readConnections());
         assertEquals(3, config.writeConnections());
         assertEquals(RedisTopology.STANDALONE, config.topology());
+        assertEquals(RedisAccessMode.READ_ONLY, config.accessMode());
         assertEquals("redis-cache:6380", config.effectiveNodes());
+    }
+
+    @Test
+    void defaultsToReadWriteAndRejectsUnknownAccessMode() {
+        assertEquals(RedisAccessMode.READ_WRITE, RustCacheConfig.fromProperties().accessMode());
+
+        Properties properties = new Properties();
+        properties.setProperty("reactor.cache.redis.access-mode", "reader-ish");
+        assertThrows(IllegalArgumentException.class, () -> RustCacheConfig.fromProperties(properties));
     }
 
     @Test

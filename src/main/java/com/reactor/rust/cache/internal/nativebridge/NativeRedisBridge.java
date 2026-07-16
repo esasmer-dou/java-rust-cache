@@ -22,6 +22,7 @@ public final class NativeRedisBridge {
     private static final int REDIS_SENTINEL_MASTER_CHECK_ABI_VERSION = 3;
     private static final int REDIS_FENCED_PUBLISH_ABI_VERSION = 4;
     private static final int REDIS_ASYNC_GET_ABI_VERSION = 5;
+    private static final int REDIS_ACCESS_MODE_ABI_VERSION = 6;
     private static final PendingNativeCacheOperations PENDING = new PendingNativeCacheOperations();
 
     private NativeRedisBridge() {}
@@ -33,7 +34,36 @@ public final class NativeRedisBridge {
     public static int createClient(RustCacheConfig config) {
         int abiVersion = nativeAbiVersionOrLegacy();
         int id;
-        if (abiVersion >= REDIS_SENTINEL_MASTER_CHECK_ABI_VERSION) {
+        if (abiVersion >= REDIS_ACCESS_MODE_ABI_VERSION) {
+            id = nativeCreateClientWithTopologyV4(
+                    config.topology().wireValue(),
+                    config.effectiveNodes(),
+                    config.host(),
+                    config.port(),
+                    config.sentinelMasterName(),
+                    config.sentinelUsername(),
+                    config.sentinelPassword(),
+                    config.username(),
+                    config.password(),
+                    config.database(),
+                    config.connectTimeoutMs(),
+                    config.readTimeoutMs(),
+                    config.writeTimeoutMs(),
+                    config.readConnections(),
+                    config.writeConnections(),
+                    config.maxReadInflight(),
+                    config.maxWriteInflight(),
+                    config.maxResponseBytes(),
+                    config.clusterMaxRedirects(),
+                    config.topologyRefreshMs(),
+                    config.sentinelMasterCheckMs(),
+                    config.accessMode().nativeValue());
+        } else if (config.accessMode() != com.reactor.rust.cache.config.RedisAccessMode.READ_WRITE) {
+            throw new RedisCacheException(
+                    "Redis access-mode=" + config.accessMode().wireValue()
+                            + " requires rust_hyper Redis ABI " + REDIS_ACCESS_MODE_ABI_VERSION
+                            + " or newer. Loaded Redis ABI version: " + abiVersion);
+        } else if (abiVersion >= REDIS_SENTINEL_MASTER_CHECK_ABI_VERSION) {
             id = nativeCreateClientWithTopologyV3(
                     config.topology().wireValue(),
                     config.effectiveNodes(),
@@ -355,7 +385,7 @@ public final class NativeRedisBridge {
                     NativeRedisBridge.class.getClassLoader(),
                     platform,
                     bytes,
-                    REDIS_ASYNC_GET_ABI_VERSION
+                    REDIS_ACCESS_MODE_ABI_VERSION
             );
             Path library = extractNativeLibrary(bytes, resource, hash);
             System.load(library.toAbsolutePath().toString());
@@ -486,6 +516,30 @@ public final class NativeRedisBridge {
             int clusterMaxRedirects,
             int topologyRefreshMs,
             int sentinelMasterCheckMs);
+
+    private static native int nativeCreateClientWithTopologyV4(
+            String topology,
+            String nodes,
+            String host,
+            int port,
+            String sentinelMasterName,
+            String sentinelUsername,
+            String sentinelPassword,
+            String username,
+            String password,
+            int database,
+            int connectTimeoutMs,
+            int readTimeoutMs,
+            int writeTimeoutMs,
+            int readConnections,
+            int writeConnections,
+            int maxReadInflight,
+            int maxWriteInflight,
+            int maxResponseBytes,
+            int clusterMaxRedirects,
+            int topologyRefreshMs,
+            int sentinelMasterCheckMs,
+            int accessMode);
 
     private static native byte[] nativeGet(int clientId, String key);
 

@@ -9,11 +9,12 @@ This project intentionally does **not** use Jedis, Lettuce, Spring Data Redis, N
 The JAR includes the matching Windows x64 and Linux x64 native binaries. If `rust-java-rest` is already on the classpath, `java-rust-cache` reuses its native bridge; otherwise it extracts and loads its own packaged `rust_hyper` binary. A manual `java.library.path` is only needed for custom native builds.
 
 Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires ABI `3`; fenced
-snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`. If
+snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`;
+role-specific native transport planes require ABI `6`. If
 the same application also uses `rust-java-rest`, use the current aligned line,
-`rust-java-rest:3.3.1` or newer, so the framework native bridge and cache library use the same
-binary contract. The packaged provenance manifest records REST ABI `23`, Dubbo ABI `5`, Redis ABI
-`5`, source revision, and platform SHA-256 hashes. Startup rejects a stale or mismatched binary.
+`rust-java-rest:3.4.0` or newer, so the framework native bridge and cache library use the same
+binary contract. The packaged provenance manifest records REST ABI `24`, Dubbo ABI `6`, Redis ABI
+`6`, source revision, and platform SHA-256 hashes. Startup rejects a stale or mismatched binary.
 
 By default, packaged native binaries are extracted under:
 
@@ -56,7 +57,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.3.1</version>
+  <version>0.4.0</version>
 </dependency>
 ```
 
@@ -91,7 +92,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.3.1"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.4.0"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -276,6 +277,7 @@ All keys can be provided as Java system properties, environment variables, or a 
 | Property | Env | Default |
 | --- | --- | --- |
 | `reactor.cache.redis.topology` | `REACTOR_CACHE_REDIS_TOPOLOGY` | `standalone` |
+| `reactor.cache.redis.access-mode` | `REACTOR_CACHE_REDIS_ACCESS_MODE` | `read-write` |
 | `reactor.cache.redis.nodes` | `REACTOR_CACHE_REDIS_NODES` | empty |
 | `reactor.cache.redis.sentinel.master-name` | `REACTOR_CACHE_REDIS_SENTINEL_MASTER_NAME` | empty |
 | `reactor.cache.redis.sentinel.username` | `REACTOR_CACHE_REDIS_SENTINEL_USERNAME` | empty |
@@ -297,6 +299,22 @@ All keys can be provided as Java system properties, environment variables, or a 
 | `reactor.cache.redis.max-write-inflight` | `REACTOR_CACHE_REDIS_MAX_WRITE_INFLIGHT` | `64` |
 | `reactor.cache.redis.max-response-bytes` | `REACTOR_CACHE_REDIS_MAX_RESPONSE_BYTES` | `1048576` |
 | `reactor.cache.native.extract-dir` | `REACTOR_CACHE_NATIVE_EXTRACT_DIR` | `${user.home}/.java-rust-cache/native` |
+
+Choose the process role explicitly:
+
+```properties
+# REST cache reader: no native write pool and write calls fail before JNI.
+reactor.cache.redis.access-mode=read-only
+
+# Scheduled materializer: no native read pool and read calls fail before JNI.
+# reactor.cache.redis.access-mode=write-only
+```
+
+Use `read-write` only when one process genuinely performs both roles. The access mode is fixed when
+the native client is created; it is not promoted at runtime. Metrics expose
+`read_capable_clients` and `write_capable_clients`, so a deployment check can prove that the unused
+plane is absent. This primarily prevents connection/in-flight growth and accidental writes; an idle
+unused pool has a very small RSS cost.
 
 ### Topology Recipes
 
@@ -437,3 +455,5 @@ If the integration Redis uses ACL or `requirepass`, add
 password-only Redis configuration.
 
 The reconnect gate intentionally allows the first operation after restart to fail. The production expectation is that the failed socket is discarded and the next operation opens a fresh Redis connection.
+
+Release details: [java-rust-cache 0.4.0](docs/RELEASE_NOTES_v0.4.0.md).

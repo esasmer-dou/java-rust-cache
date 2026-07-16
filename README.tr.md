@@ -9,10 +9,11 @@ Bu proje bilinçli olarak Jedis, Lettuce, Spring Data Redis, Netty, runtime refl
 JAR içinde Windows x64 ve Linux x64 native binary dosyaları bulunur. Aynı uygulamada `rust-java-rest` zaten varsa `java-rust-cache` aynı native bridge çizgisiyle çalışır. Yoksa kendi paketlediği `rust_hyper` binary dosyasını çıkarıp yükler. Özel native build kullanmıyorsanız `java.library.path` vermeniz gerekmez.
 
 Cluster routing için Redis native ABI `2`, Sentinel master yenileme için ABI `3`, fenced snapshot
-publish için ABI `4`, async GET ve native JSON response handle için ABI `5` gerekir. Aynı uygulama
-`rust-java-rest` de kullanıyorsa `rust-java-rest:3.3.1` veya daha yeni aynı çizgiyi kullanın. Böylece
+publish için ABI `4`, async GET ve native JSON response handle için ABI `5`, role göre native
+transport plane ayırmak için ABI `6` gerekir. Aynı uygulama
+`rust-java-rest` de kullanıyorsa `rust-java-rest:3.4.0` veya daha yeni aynı çizgiyi kullanın. Böylece
 framework native bridge ile cache library aynı binary sözleşmesini kullanır. Paketlenen provenance
-manifesti REST ABI `23`, Dubbo ABI `5`, Redis ABI `5`, kaynak revision ve platform SHA-256
+manifesti REST ABI `24`, Dubbo ABI `6`, Redis ABI `6`, kaynak revision ve platform SHA-256
 hash'lerini taşır. Eski veya uyumsuz binary startup sırasında reddedilir.
 
 Varsayılan native binary çıkarma dizini:
@@ -58,7 +59,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.3.1</version>
+  <version>0.4.0</version>
 </dependency>
 ```
 
@@ -93,7 +94,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.3.1"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.4.0"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -281,6 +282,7 @@ Tüm key'ler Java system property, environment variable veya `Properties` object
 | Property | Env | Varsayılan |
 | --- | --- | --- |
 | `reactor.cache.redis.topology` | `REACTOR_CACHE_REDIS_TOPOLOGY` | `standalone` |
+| `reactor.cache.redis.access-mode` | `REACTOR_CACHE_REDIS_ACCESS_MODE` | `read-write` |
 | `reactor.cache.redis.nodes` | `REACTOR_CACHE_REDIS_NODES` | boş |
 | `reactor.cache.redis.sentinel.master-name` | `REACTOR_CACHE_REDIS_SENTINEL_MASTER_NAME` | boş |
 | `reactor.cache.redis.sentinel.username` | `REACTOR_CACHE_REDIS_SENTINEL_USERNAME` | boş |
@@ -302,6 +304,22 @@ Tüm key'ler Java system property, environment variable veya `Properties` object
 | `reactor.cache.redis.max-write-inflight` | `REACTOR_CACHE_REDIS_MAX_WRITE_INFLIGHT` | `64` |
 | `reactor.cache.redis.max-response-bytes` | `REACTOR_CACHE_REDIS_MAX_RESPONSE_BYTES` | `1048576` |
 | `reactor.cache.native.extract-dir` | `REACTOR_CACHE_NATIVE_EXTRACT_DIR` | `${user.home}/.java-rust-cache/native` |
+
+Process rolünü açıkça seçin:
+
+```properties
+# REST cache reader: native write pool açılmaz. Write çağrısı JNI'ye ulaşmadan reddedilir.
+reactor.cache.redis.access-mode=read-only
+
+# Scheduled materializer: native read pool açılmaz. Read çağrısı JNI'ye ulaşmadan reddedilir.
+# reactor.cache.redis.access-mode=write-only
+```
+
+Tek process gerçekten hem okuyor hem yazıyorsa `read-write` kullanın. Access mode native client
+oluşturulurken sabitlenir. Runtime sırasında genişletilmez. `read_capable_clients` ve
+`write_capable_clients` metrikleri kullanılmayan plane'in açılmadığını gösterir. Bu ayarın temel
+kazancı yanlış write işlemini ve yük altında gereksiz connection/in-flight büyümesini engellemektir.
+Boşta duran kullanılmamış pool'un RSS maliyeti zaten çok küçüktür.
 
 ## Topology Reçeteleri
 
@@ -452,3 +470,5 @@ Integration Redis ACL veya `requirepass` kullanıyorsa iki Maven komutuna da
 parametresini vermeyin.
 
 Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Production beklentisi şudur: bozuk socket atılır ve sonraki operation yeni Redis connection açar.
+
+Sürüm ayrıntıları: [java-rust-cache 0.4.0](docs/RELEASE_NOTES_v0.4.0.md).

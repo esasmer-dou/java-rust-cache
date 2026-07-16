@@ -11,6 +11,7 @@ public final class RustCacheConfig {
     private final String host;
     private final int port;
     private final RedisTopology topology;
+    private final RedisAccessMode accessMode;
     private final String nodes;
     private final String sentinelMasterName;
     private final String sentinelUsername;
@@ -34,6 +35,7 @@ public final class RustCacheConfig {
         this.host = requireText(builder.host, "host");
         this.port = requirePort(builder.port);
         this.topology = Objects.requireNonNull(builder.topology, "topology");
+        this.accessMode = Objects.requireNonNull(builder.accessMode, "accessMode");
         this.nodes = normalizeOptional(builder.nodes);
         this.sentinelMasterName = normalizeOptional(builder.sentinelMasterName);
         this.sentinelUsername = normalizeOptional(builder.sentinelUsername);
@@ -69,6 +71,7 @@ public final class RustCacheConfig {
         builder.host(readString(properties, "host", builder.host));
         builder.port(readInt(properties, "port", builder.port));
         builder.topology(RedisTopology.parse(readString(properties, "topology", builder.topology.wireValue())));
+        builder.accessMode(RedisAccessMode.parse(readString(properties, "access-mode", builder.accessMode.wireValue())));
         builder.nodes(readString(properties, "nodes", builder.nodes));
         builder.sentinelMasterName(readString(properties, "sentinel.master-name", builder.sentinelMasterName));
         builder.sentinelUsername(readString(properties, "sentinel.username", builder.sentinelUsername));
@@ -100,6 +103,10 @@ public final class RustCacheConfig {
 
     public RedisTopology topology() {
         return topology;
+    }
+
+    public RedisAccessMode accessMode() {
+        return accessMode;
     }
 
     public String nodes() {
@@ -254,6 +261,7 @@ public final class RustCacheConfig {
         private String host = "127.0.0.1";
         private int port = 6379;
         private RedisTopology topology = RedisTopology.STANDALONE;
+        private RedisAccessMode accessMode = RedisAccessMode.READ_WRITE;
         private String nodes = "";
         private String sentinelMasterName = "";
         private String sentinelUsername = "";
@@ -292,6 +300,16 @@ public final class RustCacheConfig {
 
         public Builder topology(String topology) {
             this.topology = RedisTopology.parse(topology);
+            return this;
+        }
+
+        public Builder accessMode(RedisAccessMode accessMode) {
+            this.accessMode = Objects.requireNonNull(accessMode, "accessMode");
+            return this;
+        }
+
+        public Builder accessMode(String accessMode) {
+            this.accessMode = RedisAccessMode.parse(accessMode);
             return this;
         }
 
