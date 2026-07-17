@@ -45,6 +45,16 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: GITHUB_TOKEN
 
+      - name: Checkout aligned rust-java-rest
+        uses: actions/checkout@v4
+        with:
+          repository: esasmer-dou/rust-java-rest
+          ref: v4.0.0
+          path: rust-java-rest-dependency
+
+      - name: Install aligned rust-java-rest locally
+        run: mvn -B -ntp -f rust-java-rest-dependency/pom.xml -DskipTests install
+
       - name: Test
         run: mvn -B -ntp test
 
@@ -79,6 +89,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           mkdir -p release-assets
           cp "target/java-rust-cache-${VERSION}.jar" release-assets/
+          cp "target/java-rust-cache-${VERSION}-codegen.jar" release-assets/
           cp "target/java-rust-cache-${VERSION}-sources.jar" release-assets/
           cp "src/main/resources/native/windows-x64/rust_hyper-windows-x64.dll" release-assets/
           cp "src/main/resources/native/linux-x64/librust_hyper-linux-x64.so" release-assets/

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * Declarative projection-to-writer registry with fenced Redis lock execution.
@@ -107,6 +108,18 @@ public final class VersionedJsonProjectionMaterializer {
             return this;
         }
 
+        public Builder projection(ProjectionId projection, ProjectionWriter writer) {
+            Objects.requireNonNull(projection, "projection");
+            return projection(projection.value(), writer);
+        }
+
+        /**
+         * Accepts a shared domain enum without making that model artifact depend on this library.
+         */
+        public Builder projection(Supplier<String> projection, ProjectionWriter writer) {
+            return projection(requireValue(projection, "projection"), writer);
+        }
+
         public VersionedJsonProjectionMaterializer build() {
             return new VersionedJsonProjectionMaterializer(this);
         }
@@ -116,6 +129,11 @@ public final class VersionedJsonProjectionMaterializer {
                 throw new IllegalArgumentException(name + " must not be blank");
             }
             return value.trim();
+        }
+
+        private static String requireValue(Supplier<String> value, String name) {
+            Objects.requireNonNull(value, name);
+            return requireText(value.get(), name);
         }
     }
 }

@@ -1,6 +1,8 @@
 package com.reactor.rust.cache.scheduler;
 
 import com.reactor.rust.cache.config.CacheProperties;
+import com.reactor.rust.cache.core.RustCache;
+import com.reactor.rust.cache.core.RustCaches;
 import com.reactor.rust.cache.projection.CacheWriterProjectionSettings;
 
 import java.util.ArrayList;
@@ -41,6 +43,27 @@ public final class ProjectionWriterApplication {
         configureModules(from(properties, rootPrefix), modules).run();
     }
 
+    public static void runCache(
+            String classpathResource,
+            String rootPrefix,
+            CacheWriterFactory writerFactory) {
+        runCache(CacheProperties.load(classpathResource), rootPrefix, writerFactory);
+    }
+
+    public static void runCache(
+            CacheProperties properties,
+            String rootPrefix,
+            CacheWriterFactory writerFactory) {
+        Objects.requireNonNull(writerFactory, "writerFactory");
+        run(properties, rootPrefix, context -> {
+            RustCache cache = context.manage(RustCaches.create(properties.asProperties()));
+            context.refresher(Objects.requireNonNull(
+                    writerFactory.create(context, cache, properties),
+                    "writerFactory result"
+            ));
+        });
+    }
+
     public static RunningWriter start(CacheProperties properties, String rootPrefix, Module... modules) {
         return configureModules(from(properties, rootPrefix), modules).start();
     }
@@ -52,6 +75,14 @@ public final class ProjectionWriterApplication {
     @FunctionalInterface
     public interface Module {
         void configure(ModuleContext context);
+    }
+
+    @FunctionalInterface
+    public interface CacheWriterFactory {
+        ProjectionRefreshScheduler.ProjectionRefresher create(
+                ModuleContext context,
+                RustCache cache,
+                CacheProperties properties);
     }
 
     public static final class ModuleContext {

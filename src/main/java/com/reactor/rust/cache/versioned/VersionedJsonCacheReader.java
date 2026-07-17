@@ -3,6 +3,8 @@ package com.reactor.rust.cache.versioned;
 import com.reactor.rust.cache.api.CacheReadResult;
 import com.reactor.rust.cache.core.RustCache;
 
+import java.util.Objects;
+
 public final class VersionedJsonCacheReader {
 
     private final RustCache cache;
@@ -11,10 +13,24 @@ public final class VersionedJsonCacheReader {
     private volatile String cachedVersion;
     private volatile long cachedVersionUntilMillis;
 
+    public static VersionedJsonCacheReader create(RustCache cache, String namespace) {
+        return create(cache, namespace, VersionedJsonKeys.DEFAULT_VERSION_CACHE_MILLIS);
+    }
+
+    public static VersionedJsonCacheReader create(
+            RustCache cache,
+            String namespace,
+            long versionCacheMillis) {
+        return new VersionedJsonCacheReader(
+                Objects.requireNonNull(cache, "cache"),
+                VersionedJsonKeys.normalizeNamespace(namespace),
+                versionCacheMillis);
+    }
+
     VersionedJsonCacheReader(RustCache cache, String namespace, long versionCacheMillis) {
         this.cache = cache;
         this.namespace = namespace;
-        this.versionCacheMillis = VersionedJsonCache.requireVersionCacheMillis(versionCacheMillis);
+        this.versionCacheMillis = VersionedJsonKeys.requireVersionCacheMillis(versionCacheMillis);
     }
 
     public CacheReadResult getById(long id) {
@@ -22,7 +38,7 @@ public final class VersionedJsonCacheReader {
         if (version == null) {
             return CacheReadResult.cacheNotReady();
         }
-        byte[] bytes = cache.getBytes(VersionedJsonCache.idKey(namespace, version, id));
+        byte[] bytes = cache.getBytes(VersionedJsonKeys.idKey(namespace, version, id));
         return bytes == null ? CacheReadResult.miss() : CacheReadResult.hit(bytes);
     }
 
@@ -31,7 +47,7 @@ public final class VersionedJsonCacheReader {
         if (version == null) {
             return CacheReadResult.cacheNotReady();
         }
-        byte[] bytes = cache.getBytes(VersionedJsonCache.indexKey(namespace, version, indexName, indexValue));
+        byte[] bytes = cache.getBytes(VersionedJsonKeys.indexKey(namespace, version, indexName, indexValue));
         return bytes == null ? CacheReadResult.miss() : CacheReadResult.hit(bytes);
     }
 
@@ -40,7 +56,7 @@ public final class VersionedJsonCacheReader {
         if (version == null) {
             return CacheReadResult.cacheNotReady();
         }
-        byte[] bytes = cache.getBytes(VersionedJsonCache.metaKey(namespace, version));
+        byte[] bytes = cache.getBytes(VersionedJsonKeys.metaKey(namespace, version));
         return bytes == null ? CacheReadResult.miss() : CacheReadResult.hit(bytes);
     }
 
@@ -55,8 +71,8 @@ public final class VersionedJsonCacheReader {
         if (version != null && now < cachedVersionUntilMillis) {
             return version;
         }
-        version = VersionedJsonCache.decodeCurrentVersion(
-                cache.getString(VersionedJsonCache.currentKey(namespace))
+        version = VersionedJsonKeys.decodeCurrentVersion(
+                cache.getString(VersionedJsonKeys.currentKey(namespace))
         );
         if (version != null && versionCacheMillis > 0) {
             cachedVersion = version;

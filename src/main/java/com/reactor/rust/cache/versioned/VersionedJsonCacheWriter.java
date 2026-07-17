@@ -12,10 +12,21 @@ public final class VersionedJsonCacheWriter {
     private final String namespace;
     private final int batchSize;
 
+    public static VersionedJsonCacheWriter create(RustCache cache, String namespace) {
+        return create(cache, namespace, VersionedJsonKeys.DEFAULT_BATCH_SIZE);
+    }
+
+    public static VersionedJsonCacheWriter create(RustCache cache, String namespace, int batchSize) {
+        return new VersionedJsonCacheWriter(
+                Objects.requireNonNull(cache, "cache"),
+                VersionedJsonKeys.normalizeNamespace(namespace),
+                batchSize);
+    }
+
     VersionedJsonCacheWriter(RustCache cache, String namespace, int batchSize) {
         this.cache = cache;
         this.namespace = namespace;
-        this.batchSize = VersionedJsonCache.requireBatchSize(batchSize);
+        this.batchSize = VersionedJsonKeys.requireBatchSize(batchSize);
     }
 
     public SnapshotResult refreshSnapshotWithLock(
@@ -45,7 +56,7 @@ public final class VersionedJsonCacheWriter {
         if (dataTtlMillis <= 0) {
             throw new IllegalArgumentException("dataTtlMillis must be positive");
         }
-        long fencingToken = cache.increment(VersionedJsonCache.fenceKey(namespace));
+        long fencingToken = cache.increment(VersionedJsonKeys.fenceKey(namespace));
         if (fencingToken <= 0) {
             throw new IllegalStateException("Redis returned an invalid snapshot fencing token");
         }

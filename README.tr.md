@@ -11,7 +11,7 @@ JAR içinde Windows x64 ve Linux x64 native binary dosyaları bulunur. Aynı uyg
 Cluster routing için Redis native ABI `2`, Sentinel master yenileme için ABI `3`, fenced snapshot
 publish için ABI `4`, async GET ve native JSON response handle için ABI `5`, role göre native
 transport plane ayırmak için ABI `6` gerekir. Aynı uygulama
-`rust-java-rest` de kullanıyorsa `rust-java-rest:3.4.1` veya daha yeni aynı çizgiyi kullanın. Böylece
+`rust-java-rest` de kullanıyorsa `rust-java-rest:4.0.0` veya daha yeni aynı çizgiyi kullanın. Böylece
 framework native bridge ile cache library aynı binary sözleşmesini kullanır. Paketlenen provenance
 manifesti REST ABI `24`, Dubbo ABI `7`, Redis ABI `6`, kaynak revision ve platform SHA-256
 hash'lerini taşır. Eski veya uyumsuz binary startup sırasında reddedilir.
@@ -59,7 +59,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.4.1</version>
+  <version>0.5.0</version>
 </dependency>
 ```
 
@@ -94,7 +94,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.4.1"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.5.0"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -195,23 +195,23 @@ Writer process örneği:
 ```java
 public final class CacheWriterApplication {
     public static void main(String[] args) {
-        ProjectionWriterApplication.run(
+        ProjectionWriterApplication.runCache(
                 "cache-writer.properties",
                 "sample.writer",
-                CacheWriterModule.INSTANCE);
+                CustomerMaterializer::create);
     }
 }
 ```
 
-Named module, business wiring akışını açık tutar:
+Factory, yönetilen Redis client'ı hazır alır. Yalnızca ihtiyaç duyduğu iş kaynaklarını oluşturur:
 
 ```java
-public void configure(ProjectionWriterApplication.ModuleContext context) {
-        CacheProperties properties = context.properties();
-        Repository repository = context.manage(Repository.open(properties));
-        RustCache cache = context.manage(RustCaches.create(properties.asProperties()));
-        CustomerMaterializer materializer = new CustomerMaterializer(repository, cache, properties);
-        context.refresher(materializer::refreshProjection);
+static ProjectionRefreshScheduler.ProjectionRefresher create(
+        ProjectionWriterApplication.ModuleContext context,
+        RustCache cache,
+        CacheProperties properties) {
+    Repository repository = context.manage(Repository.open(properties));
+    return new CustomerMaterializer(repository, cache, properties)::refreshProjection;
 }
 ```
 
@@ -227,8 +227,30 @@ List<CacheReaderProjectionSettings> projections =
 VersionedJsonProjectionReaders readers = VersionedJsonProjectionReaders.create(
         cache, projections, properties.getLong("sample.cache.customer.version-cache-ms"));
 
-CacheReadResult customer = readers.getById("detail", customerId);
+VersionedJsonProjectionReaders.BoundProjection details =
+        readers.bind(CustomerProjection.DETAIL);
+VersionedJsonProjectionReaders.BoundIndex customerNumber =
+        details.bind(CustomerProjectionIndex.CUSTOMER_NO);
+
+CacheReadResult customer = details.getById(customerId);
+CacheReadResult byNumber = customerNumber.get("CUST-1001");
 ```
+
+Ortak enum'lar `Supplier<String>` uygular. Bu nedenle model artifact'i cache library'ye bağımlı
+olmaz. Projection ve index bağlantılarını uygulama başlarken bir kez kurun. Bound nesneler seçilen native
+cache reader'ı doğrudan çağırır. Her istekte projection registry araması tekrarlanmaz.
+
+REST endpoint'inde cache hazırlığı ile gerçek business miss sonucunu ayırın:
+
+```java
+return CacheResponses.json(
+        customerService.find(customerId),
+        CacheResponsePolicy.production("customer_not_found"));
+```
+
+Snapshot hazırsa fakat müşteri yoksa `404` döner. Writer henüz snapshot publish etmediyse `503`
+döner. Miss ve hazırlık davranışı uygulama kodunda açıkça görülsün diye `CacheResponsePolicy`
+değerini doğrudan verin.
 
 Classpath varsayılanları, `reactor.config.file` overlay dosyaları, ortam değişkenleri ve `-D` system
 property değerleri için `CacheProperties` kullanın. Config başka bir kaynaktan geliyorsa
@@ -258,6 +280,8 @@ ANTI-PATTERN: DTO class adından Redis key tahmin eden generic reflection mapper
   fenced lock akışını yönetir.
 - `VersionedJsonProjectionReaders`: İsimlendirilmiş reader registry'sini ve kontrollü not-ready
   sonucunu yönetir.
+- `BoundProjection` ve `BoundIndex`: Projection adlarını başlangıçta bir kez çözer. Request yolundaki
+  registry aramasını kaldırır.
 - `ProjectionRefreshScheduler`: Projection schedule, run-once mode, Redis lock sonucu loglama ve TTL/config uyarılarını yönetir.
 - `JsonWriter`: UTF-8 JSON escaping ve primitive field helper sağlar. Domain JSON alanlarına uygulama karar verir.
 - `JdbcRepository`: `DataSource` etrafında connection/query/page/lifecycle boilerplate kodunu azaltır.
@@ -266,12 +290,39 @@ ANTI-PATTERN: DTO class adından Redis key tahmin eden generic reflection mapper
 Örnek:
 
 ```java
-VersionedJsonProjectionMaterializer materializer =
-        VersionedJsonProjectionMaterializer.builder(cache, projectionSettings, batchSize)
-            .projection("detail", this::writeDetail)
-            .projection("campaign", this::writeCampaign)
-            .build();
+@GenerateProjectionRegistry(CustomerProjection.class)
+final class CustomerMaterializer {
+    private final VersionedJsonProjectionMaterializer materializer;
+
+    CustomerMaterializer(RustCache cache,
+                         List<CacheWriterProjectionSettings> settings,
+                         int batchSize) {
+        materializer = CustomerMaterializerProjectionRegistry.create(
+                this, cache, settings, batchSize);
+    }
+
+    SnapshotResult writeDetail(ProjectionTarget target) { /* iş dönüşümü */ }
+    SnapshotResult writeCampaign(ProjectionTarget target) { /* iş dönüşümü */ }
+}
 ```
+
+Generated registry her enum değerini derleme sırasında doğrular. Doğrudan method reference üretir.
+Refresh sırasında reflection veya projection adı parse işlemi çalışmaz.
+
+Processor'ı yalnız build path'e ekleyin:
+
+```xml
+<path>
+  <groupId>com.reactor</groupId>
+  <artifactId>java-rust-cache</artifactId>
+  <version>0.5.0</version>
+  <classifier>codegen</classifier>
+</path>
+```
+
+Maven compiler plugin içinde
+`com.reactor.rust.cache.codegen.ProjectionRegistryProcessor` seçin. Release build,
+`com/reactor/rust/cache/codegen` paketinin runtime JAR içinde olmadığını doğrular.
 
 BEST: Lifecycle boilerplate kodunu library'ye bırakın. SQL, row mapping, JSON shape ve cache key business kararlarını uygulama kodunda açık tutun.
 
@@ -471,4 +522,4 @@ parametresini vermeyin.
 
 Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Production beklentisi şudur: bozuk socket atılır ve sonraki operation yeni Redis connection açar.
 
-Sürüm ayrıntıları: [java-rust-cache 0.4.1](docs/RELEASE_NOTES_v0.4.1.md).
+Sürüm ayrıntıları: [java-rust-cache 0.5.0](docs/RELEASE_NOTES_v0.5.0.md).

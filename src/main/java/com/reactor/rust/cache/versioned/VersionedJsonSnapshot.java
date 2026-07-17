@@ -43,15 +43,15 @@ public final class VersionedJsonSnapshot {
     }
 
     public void putById(long id, byte[] json) {
-        putInternal(VersionedJsonCache.idKey(namespace, version, id), json);
+        putInternal(VersionedJsonKeys.idKey(namespace, version, id), json);
     }
 
     public void putIndex(String indexName, String indexValue, byte[] json) {
-        putInternal(VersionedJsonCache.indexKey(namespace, version, indexName, indexValue), json);
+        putInternal(VersionedJsonKeys.indexKey(namespace, version, indexName, indexValue), json);
     }
 
     public void putMeta(byte[] json) {
-        putInternal(VersionedJsonCache.metaKey(namespace, version), json);
+        putInternal(VersionedJsonKeys.metaKey(namespace, version), json);
     }
 
     public void putMeta(String json) {
@@ -65,7 +65,7 @@ public final class VersionedJsonSnapshot {
         }
         flush();
         boolean pointerUpdated = cache.publishFencedVersion(
-                VersionedJsonCache.currentKey(namespace),
+                VersionedJsonKeys.currentKey(namespace),
                 fencingToken,
                 version,
                 dataTtlMillis

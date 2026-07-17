@@ -6,7 +6,7 @@
 
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.4.1</version>
+  <version>0.5.0</version>
   <packaging>jar</packaging>
 
   <name>java-rust-cache</name>
@@ -17,6 +17,7 @@
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <hikaricp.version>5.1.0</hikaricp.version>
+    <rust-java-rest.version>4.0.0</rust-java-rest.version>
     <junit.version>5.11.4</junit.version>
   </properties>
 
@@ -25,6 +26,12 @@
       <groupId>com.zaxxer</groupId>
       <artifactId>HikariCP</artifactId>
       <version>${hikaricp.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.reactor</groupId>
+      <artifactId>rust-java-rest</artifactId>
+      <version>${rust-java-rest.version}</version>
       <optional>true</optional>
     </dependency>
     <dependency>
@@ -47,6 +54,34 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <executions>
+          <execution>
+            <id>default-jar</id>
+            <configuration>
+              <excludes>
+                <exclude>com/reactor/rust/cache/codegen/**</exclude>
+              </excludes>
+            </configuration>
+          </execution>
+          <execution>
+            <id>codegen-jar</id>
+            <phase>package</phase>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+            <configuration>
+              <classifier>codegen</classifier>
+              <includes>
+                <include>com/reactor/rust/cache/codegen/**</include>
+              </includes>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.13.0</version>
         <configuration>
@@ -59,9 +94,34 @@
         <version>3.5.2</version>
       </plugin>
       <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <id>verify-codegen-artifact-boundary</id>
+            <phase>verify</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>com.reactor.rust.cache.codegen.ArtifactLayoutVerifier</mainClass>
+              <arguments>
+                <argument>${project.build.directory}/${project.build.finalName}.jar</argument>
+                <argument>${project.build.directory}/${project.build.finalName}-codegen.jar</argument>
+                <argument>com/reactor/rust/cache/codegen/</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
         <version>3.3.1</version>
+        <configuration>
+          <excludes>
+            <exclude>com/reactor/rust/cache/codegen/**</exclude>
+          </excludes>
+        </configuration>
         <executions>
           <execution>
             <id>attach-sources</id>

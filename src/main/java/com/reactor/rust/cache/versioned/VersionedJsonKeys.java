@@ -1,76 +1,17 @@
 package com.reactor.rust.cache.versioned;
 
-import com.reactor.rust.cache.core.RustCache;
-
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 
-public final class VersionedJsonCache {
+final class VersionedJsonKeys {
 
-    public static final long DEFAULT_VERSION_CACHE_MILLIS = 1_000L;
-    public static final int DEFAULT_BATCH_SIZE = 256;
-    public static final int MAX_BATCH_SIZE = 4_096;
+    static final long DEFAULT_VERSION_CACHE_MILLIS = 1_000L;
+    static final int DEFAULT_BATCH_SIZE = 256;
+    static final int MAX_BATCH_SIZE = 4_096;
 
     private static final int MAX_KEY_PART_BYTES = 256;
     private static final char[] HEX = "0123456789ABCDEF".toCharArray();
 
-    private final RustCache cache;
-    private final String namespace;
-    private final VersionedJsonCacheReader reader;
-    private final VersionedJsonCacheWriter writer;
-
-    private VersionedJsonCache(RustCache cache, String namespace, long versionCacheMillis, int batchSize) {
-        this.cache = Objects.requireNonNull(cache, "cache");
-        this.namespace = normalizeNamespace(namespace);
-        this.reader = new VersionedJsonCacheReader(cache, this.namespace, versionCacheMillis);
-        this.writer = new VersionedJsonCacheWriter(cache, this.namespace, batchSize);
-    }
-
-    public static VersionedJsonCache create(RustCache cache, String namespace) {
-        return new VersionedJsonCache(cache, namespace, DEFAULT_VERSION_CACHE_MILLIS, DEFAULT_BATCH_SIZE);
-    }
-
-    public static VersionedJsonCache create(
-            RustCache cache,
-            String namespace,
-            long versionCacheMillis,
-            int batchSize) {
-        return new VersionedJsonCache(cache, namespace, versionCacheMillis, batchSize);
-    }
-
-    public static VersionedJsonCacheReader createReader(RustCache cache, String namespace) {
-        return createReader(cache, namespace, DEFAULT_VERSION_CACHE_MILLIS);
-    }
-
-    public static VersionedJsonCacheReader createReader(RustCache cache, String namespace, long versionCacheMillis) {
-        return new VersionedJsonCacheReader(
-                Objects.requireNonNull(cache, "cache"),
-                normalizeNamespace(namespace),
-                versionCacheMillis);
-    }
-
-    public static VersionedJsonCacheWriter createWriter(RustCache cache, String namespace) {
-        return createWriter(cache, namespace, DEFAULT_BATCH_SIZE);
-    }
-
-    public static VersionedJsonCacheWriter createWriter(RustCache cache, String namespace, int batchSize) {
-        return new VersionedJsonCacheWriter(
-                Objects.requireNonNull(cache, "cache"),
-                normalizeNamespace(namespace),
-                batchSize);
-    }
-
-    public String namespace() {
-        return namespace;
-    }
-
-    public VersionedJsonCacheReader reader() {
-        return reader;
-    }
-
-    public VersionedJsonCacheWriter writer() {
-        return writer;
-    }
+    private VersionedJsonKeys() {}
 
     static String currentKey(String namespace) {
         return namespace + ":current";

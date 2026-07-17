@@ -12,7 +12,7 @@ Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires 
 snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`;
 role-specific native transport planes require ABI `6`. If
 the same application also uses `rust-java-rest`, use the current aligned line,
-`rust-java-rest:3.4.1` or newer, so the framework native bridge and cache library use the same
+`rust-java-rest:4.0.0` or newer, so the framework native bridge and cache library use the same
 binary contract. The packaged provenance manifest records REST ABI `24`, Dubbo ABI `7`, Redis ABI
 `6`, source revision, and platform SHA-256 hashes. Startup rejects a stale or mismatched binary.
 
@@ -57,7 +57,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.4.1</version>
+  <version>0.5.0</version>
 </dependency>
 ```
 
@@ -92,7 +92,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.4.1"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.5.0"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -185,23 +185,23 @@ Writer process example:
 ```java
 public final class CacheWriterApplication {
     public static void main(String[] args) {
-        ProjectionWriterApplication.run(
+        ProjectionWriterApplication.runCache(
                 "cache-writer.properties",
                 "sample.writer",
-                CacheWriterModule.INSTANCE);
+                CustomerMaterializer::create);
     }
 }
 ```
 
-The named module keeps the business wiring explicit:
+The factory receives the managed Redis client. It creates only the business resources it needs:
 
 ```java
-public void configure(ProjectionWriterApplication.ModuleContext context) {
-        CacheProperties properties = context.properties();
-        Repository repository = context.manage(Repository.open(properties));
-        RustCache cache = context.manage(RustCaches.create(properties.asProperties()));
-        CustomerMaterializer materializer = new CustomerMaterializer(repository, cache, properties);
-        context.refresher(materializer::refreshProjection);
+static ProjectionRefreshScheduler.ProjectionRefresher create(
+        ProjectionWriterApplication.ModuleContext context,
+        RustCache cache,
+        CacheProperties properties) {
+    Repository repository = context.manage(Repository.open(properties));
+    return new CustomerMaterializer(repository, cache, properties)::refreshProjection;
 }
 ```
 
@@ -217,8 +217,30 @@ List<CacheReaderProjectionSettings> projections =
 VersionedJsonProjectionReaders readers = VersionedJsonProjectionReaders.create(
         cache, projections, properties.getLong("sample.cache.customer.version-cache-ms"));
 
-CacheReadResult customer = readers.getById("detail", customerId);
+VersionedJsonProjectionReaders.BoundProjection details =
+        readers.bind(CustomerProjection.DETAIL);
+VersionedJsonProjectionReaders.BoundIndex customerNumber =
+        details.bind(CustomerProjectionIndex.CUSTOMER_NO);
+
+CacheReadResult customer = details.getById(customerId);
+CacheReadResult byNumber = customerNumber.get("CUST-1001");
 ```
+
+The shared enums implement `Supplier<String>`, so the model artifact does not depend on this cache
+library. Bind projections and indexes once during startup. The bound objects call the selected native cache
+reader directly, so request handling does not repeat the projection registry lookup.
+
+For REST endpoints, keep cache readiness separate from a real business miss:
+
+```java
+return CacheResponses.json(
+        customerService.find(customerId),
+        CacheResponsePolicy.production("customer_not_found"));
+```
+
+This policy returns `404` when the snapshot exists but the customer does not. It returns `503` when
+the writer has not published a snapshot yet. Pass a `CacheResponsePolicy` explicitly so miss and
+readiness behavior remain visible in application code.
 
 Use `CacheProperties` for classpath defaults, `reactor.config.file` overlays, environment variables,
 and `-D` system properties. Implement `ProjectionPropertySource` yourself only when configuration
@@ -248,6 +270,8 @@ deliberately explicit:
 - `VersionedJsonProjectionMaterializer` maps explicit projection names to business writers and owns
   fenced lock execution.
 - `VersionedJsonProjectionReaders` owns the named reader registry and controlled not-ready result.
+- `BoundProjection` and `BoundIndex` resolve projection names once at startup and remove registry
+  lookup from the request path.
 - `ProjectionRefreshScheduler` schedules configured projections and handles run-once mode, Redis
   lock result logging, and TTL/config warnings.
 - `JsonWriter` provides UTF-8 JSON escaping and primitive field helpers. Your domain writer still
@@ -260,12 +284,38 @@ deliberately explicit:
 Example:
 
 ```java
-VersionedJsonProjectionMaterializer materializer =
-        VersionedJsonProjectionMaterializer.builder(cache, projectionSettings, batchSize)
-            .projection("detail", this::writeDetail)
-            .projection("campaign", this::writeCampaign)
-            .build();
+@GenerateProjectionRegistry(CustomerProjection.class)
+final class CustomerMaterializer {
+    private final VersionedJsonProjectionMaterializer materializer;
+
+    CustomerMaterializer(RustCache cache,
+                         List<CacheWriterProjectionSettings> settings,
+                         int batchSize) {
+        materializer = CustomerMaterializerProjectionRegistry.create(
+                this, cache, settings, batchSize);
+    }
+
+    SnapshotResult writeDetail(ProjectionTarget target) { /* business mapping */ }
+    SnapshotResult writeCampaign(ProjectionTarget target) { /* business mapping */ }
+}
 ```
+
+The generated registry validates every enum value at build time. It emits direct method references;
+there is no runtime reflection or projection-name parsing on refresh.
+
+Add the processor only to the build path:
+
+```xml
+<path>
+  <groupId>com.reactor</groupId>
+  <artifactId>java-rust-cache</artifactId>
+  <version>0.5.0</version>
+  <classifier>codegen</classifier>
+</path>
+```
+
+Select `com.reactor.rust.cache.codegen.ProjectionRegistryProcessor` in the Maven compiler plugin.
+The release build verifies that `com/reactor/rust/cache/codegen` is absent from the runtime JAR.
 
 BEST: let the library own lifecycle boilerplate. Keep SQL, row mapping, JSON shape, and cache key
 business decisions in your application.
@@ -456,4 +506,4 @@ password-only Redis configuration.
 
 The reconnect gate intentionally allows the first operation after restart to fail. The production expectation is that the failed socket is discarded and the next operation opens a fresh Redis connection.
 
-Release details: [java-rust-cache 0.4.1](docs/RELEASE_NOTES_v0.4.1.md).
+Release details: [java-rust-cache 0.5.0](docs/RELEASE_NOTES_v0.5.0.md).
