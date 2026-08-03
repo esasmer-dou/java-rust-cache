@@ -1,0 +1,3 @@
+com.reactor.rust.cache.codegen.ProjectionReaderProcessor
+com.reactor.rust.cache.codegen.ProjectionRegistryProcessor
+com.reactor.rust.cache.codegen.RustCacheConfigurationProcessor

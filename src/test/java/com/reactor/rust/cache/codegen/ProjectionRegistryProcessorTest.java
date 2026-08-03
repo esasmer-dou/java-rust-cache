@@ -67,5 +67,8 @@ class ProjectionRegistryProcessorTest {
                 StandardCharsets.UTF_8);
         assertTrue(generated.contains("Projection.DETAIL, owner::writeDetail"));
         assertTrue(generated.contains("Projection.CUSTOMER_META, owner::writeCustomerMeta"));
+        assertTrue(generated.contains("com.reactor.rust.cache.config.CacheProperties properties"));
+        assertTrue(generated.contains("String rootPrefix"));
+        assertTrue(generated.contains(".resolveAll(properties, root)"));
     }
 }

@@ -12,7 +12,7 @@ Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires 
 snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`;
 role-specific native transport planes require ABI `6`. If
 the same application also uses `rust-java-rest`, use the current aligned line,
-`rust-java-rest:4.0.0` or newer, so the framework native bridge and cache library use the same
+`rust-java-rest:4.1.0` or newer, so the framework native bridge and cache library use the same
 binary contract. The packaged provenance manifest records REST ABI `24`, Dubbo ABI `7`, Redis ABI
 `6`, source revision, and platform SHA-256 hashes. Startup rejects a stale or mismatched binary.
 
@@ -57,7 +57,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
 </dependency>
 ```
 
@@ -92,7 +92,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.5.0"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.6.0"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -188,22 +188,52 @@ public final class CacheWriterApplication {
         ProjectionWriterApplication.runCache(
                 "cache-writer.properties",
                 "sample.writer",
-                CustomerMaterializer::create);
+                PostgresRepository::open,
+                CustomerMaterializer::new);
     }
 }
 ```
 
-The factory receives the managed Redis client. It creates only the business resources it needs:
+The first factory creates one managed business resource. The library closes it after the scheduler
+and native cache stop. The second factory creates the refresher:
 
 ```java
-static ProjectionRefreshScheduler.ProjectionRefresher create(
-        ProjectionWriterApplication.ModuleContext context,
-        RustCache cache,
-        CacheProperties properties) {
-    Repository repository = context.manage(Repository.open(properties));
-    return new CustomerMaterializer(repository, cache, properties)::refreshProjection;
+final class CustomerMaterializer implements ProjectionRefreshScheduler.ProjectionRefresher {
+    CustomerMaterializer(PostgresRepository repository, RustCache cache, CacheProperties properties) {
+        // Keep SQL and JSON mapping explicit here.
+    }
 }
 ```
+
+The four-argument launcher removes resource-lifecycle boilerplate. It does not use reflection and it
+does not change the projection refresh hot path.
+
+Reader process example for a REST application:
+
+```java
+@EnableRustCache
+@ReactorApplication(scanBasePackages = "com.example.cache")
+public final class CacheReaderApplication {
+    public static void main(String[] args) {
+        RestApplication.run(CacheReaderApplication.class, args);
+    }
+}
+
+@GenerateProjectionReader(rootPrefix = "sample.cache.customer", restBean = true)
+interface CustomerCacheReads {
+    @ProjectionIdRead(projection = "detail")
+    CacheReadResult customer(long id);
+
+    @ProjectionIndexRead(projection = "segment", index = "segment")
+    CacheReadResult bySegment(String segment);
+}
+```
+
+`@EnableRustCache` generates one managed native cache bean. `@GenerateProjectionReader` creates the
+bound reader implementation. Projection and index names are resolved once at startup.
+The reader contract may inherit non-generic annotated methods from another interface. Default helper
+methods are left untouched. Generic reader contracts, blank prefixes, and invalid generated class
+names fail the build instead of falling back to runtime reflection.
 
 Use the builder only for advanced scheduler customization. The simple launcher still owns shutdown,
 startup rollback, loaded properties, bounded scheduler threads, and managed resources.
@@ -288,11 +318,9 @@ Example:
 final class CustomerMaterializer {
     private final VersionedJsonProjectionMaterializer materializer;
 
-    CustomerMaterializer(RustCache cache,
-                         List<CacheWriterProjectionSettings> settings,
-                         int batchSize) {
+    CustomerMaterializer(RustCache cache, CacheProperties properties) {
         materializer = CustomerMaterializerProjectionRegistry.create(
-                this, cache, settings, batchSize);
+                this, cache, properties, "sample.writer");
     }
 
     SnapshotResult writeDetail(ProjectionTarget target) { /* business mapping */ }
@@ -309,13 +337,14 @@ Add the processor only to the build path:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
   <classifier>codegen</classifier>
 </path>
 ```
 
-Select `com.reactor.rust.cache.codegen.ProjectionRegistryProcessor` in the Maven compiler plugin.
-The release build verifies that `com/reactor/rust/cache/codegen` is absent from the runtime JAR.
+The codegen JAR discovers its processors automatically. Do not copy processor class names into every
+application POM. The release build verifies that processor classes and processor service metadata are
+absent from the runtime JAR.
 
 BEST: let the library own lifecycle boilerplate. Keep SQL, row mapping, JSON shape, and cache key
 business decisions in your application.
@@ -506,4 +535,4 @@ password-only Redis configuration.
 
 The reconnect gate intentionally allows the first operation after restart to fail. The production expectation is that the failed socket is discarded and the next operation opens a fresh Redis connection.
 
-Release details: [java-rust-cache 0.5.0](docs/RELEASE_NOTES_v0.5.0.md).
+Release details: [java-rust-cache 0.6.0](docs/RELEASE_NOTES_v0.6.0.md).

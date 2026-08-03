@@ -64,6 +64,31 @@ public final class ProjectionWriterApplication {
         });
     }
 
+    public static <R extends AutoCloseable> void runCache(
+            String classpathResource,
+            String rootPrefix,
+            ManagedResourceFactory<R> resourceFactory,
+            ManagedCacheWriterFactory<R> writerFactory) {
+        runCache(CacheProperties.load(classpathResource), rootPrefix, resourceFactory, writerFactory);
+    }
+
+    public static <R extends AutoCloseable> void runCache(
+            CacheProperties properties,
+            String rootPrefix,
+            ManagedResourceFactory<R> resourceFactory,
+            ManagedCacheWriterFactory<R> writerFactory) {
+        Objects.requireNonNull(resourceFactory, "resourceFactory");
+        Objects.requireNonNull(writerFactory, "writerFactory");
+        runCache(properties, rootPrefix, (context, cache, loaded) -> {
+            R resource = context.manage(Objects.requireNonNull(
+                    resourceFactory.create(loaded),
+                    "resourceFactory result"));
+            return Objects.requireNonNull(
+                    writerFactory.create(resource, cache, loaded),
+                    "writerFactory result");
+        });
+    }
+
     public static RunningWriter start(CacheProperties properties, String rootPrefix, Module... modules) {
         return configureModules(from(properties, rootPrefix), modules).start();
     }
@@ -81,6 +106,19 @@ public final class ProjectionWriterApplication {
     public interface CacheWriterFactory {
         ProjectionRefreshScheduler.ProjectionRefresher create(
                 ModuleContext context,
+                RustCache cache,
+                CacheProperties properties);
+    }
+
+    @FunctionalInterface
+    public interface ManagedResourceFactory<R extends AutoCloseable> {
+        R create(CacheProperties properties);
+    }
+
+    @FunctionalInterface
+    public interface ManagedCacheWriterFactory<R extends AutoCloseable> {
+        ProjectionRefreshScheduler.ProjectionRefresher create(
+                R resource,
                 RustCache cache,
                 CacheProperties properties);
     }

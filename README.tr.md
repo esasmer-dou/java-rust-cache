@@ -11,7 +11,7 @@ JAR içinde Windows x64 ve Linux x64 native binary dosyaları bulunur. Aynı uyg
 Cluster routing için Redis native ABI `2`, Sentinel master yenileme için ABI `3`, fenced snapshot
 publish için ABI `4`, async GET ve native JSON response handle için ABI `5`, role göre native
 transport plane ayırmak için ABI `6` gerekir. Aynı uygulama
-`rust-java-rest` de kullanıyorsa `rust-java-rest:4.0.0` veya daha yeni aynı çizgiyi kullanın. Böylece
+`rust-java-rest` de kullanıyorsa `rust-java-rest:4.1.0` veya daha yeni aynı çizgiyi kullanın. Böylece
 framework native bridge ile cache library aynı binary sözleşmesini kullanır. Paketlenen provenance
 manifesti REST ABI `24`, Dubbo ABI `7`, Redis ABI `6`, kaynak revision ve platform SHA-256
 hash'lerini taşır. Eski veya uyumsuz binary startup sırasında reddedilir.
@@ -59,7 +59,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
 </dependency>
 ```
 
@@ -94,7 +94,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.5.0"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.6.0"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -198,22 +198,52 @@ public final class CacheWriterApplication {
         ProjectionWriterApplication.runCache(
                 "cache-writer.properties",
                 "sample.writer",
-                CustomerMaterializer::create);
+                PostgresRepository::open,
+                CustomerMaterializer::new);
     }
 }
 ```
 
-Factory, yönetilen Redis client'ı hazır alır. Yalnızca ihtiyaç duyduğu iş kaynaklarını oluşturur:
+İlk factory, yönetilen business kaynağını oluşturur. Library, scheduler ve native cache kapandıktan
+sonra bu kaynağı kapatır. İkinci factory refresher'ı oluşturur:
 
 ```java
-static ProjectionRefreshScheduler.ProjectionRefresher create(
-        ProjectionWriterApplication.ModuleContext context,
-        RustCache cache,
-        CacheProperties properties) {
-    Repository repository = context.manage(Repository.open(properties));
-    return new CustomerMaterializer(repository, cache, properties)::refreshProjection;
+final class CustomerMaterializer implements ProjectionRefreshScheduler.ProjectionRefresher {
+    CustomerMaterializer(PostgresRepository repository, RustCache cache, CacheProperties properties) {
+        // SQL ve JSON dönüşüm kararları burada açık kalır.
+    }
 }
 ```
+
+Dört parametreli launcher, resource lifecycle boilerplate kodunu kaldırır. Reflection kullanmaz.
+Projection refresh hot path'ini değiştirmez.
+
+REST cache reader örneği:
+
+```java
+@EnableRustCache
+@ReactorApplication(scanBasePackages = "com.example.cache")
+public final class CacheReaderApplication {
+    public static void main(String[] args) {
+        RestApplication.run(CacheReaderApplication.class, args);
+    }
+}
+
+@GenerateProjectionReader(rootPrefix = "sample.cache.customer", restBean = true)
+interface CustomerCacheReads {
+    @ProjectionIdRead(projection = "detail")
+    CacheReadResult customer(long id);
+
+    @ProjectionIndexRead(projection = "segment", index = "segment")
+    CacheReadResult bySegment(String segment);
+}
+```
+
+`@EnableRustCache` tek bir managed native cache bean'i üretir. `@GenerateProjectionReader`, bound
+reader implementasyonunu üretir. Projection ve index adları başlangıçta bir kez çözülür.
+Reader kontratı başka bir interface'teki generic olmayan annotation'lı metotları miras alabilir.
+Default yardımcı metotlar olduğu gibi kalır. Generic reader kontratı, boş prefix veya geçersiz
+generated class adı varsa build durur. Runtime reflection fallback kullanılmaz.
 
 Builder yalnızca ileri scheduler ayarları için kullanılmalıdır. Basit launcher da shutdown, başlangıç
 hatasında geri alma, property yükleme, sınırlı scheduler thread'leri ve kaynak yönetimini korur.
@@ -294,11 +324,9 @@ ANTI-PATTERN: DTO class adından Redis key tahmin eden generic reflection mapper
 final class CustomerMaterializer {
     private final VersionedJsonProjectionMaterializer materializer;
 
-    CustomerMaterializer(RustCache cache,
-                         List<CacheWriterProjectionSettings> settings,
-                         int batchSize) {
+    CustomerMaterializer(RustCache cache, CacheProperties properties) {
         materializer = CustomerMaterializerProjectionRegistry.create(
-                this, cache, settings, batchSize);
+                this, cache, properties, "sample.writer");
     }
 
     SnapshotResult writeDetail(ProjectionTarget target) { /* iş dönüşümü */ }
@@ -315,14 +343,14 @@ Processor'ı yalnız build path'e ekleyin:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
   <classifier>codegen</classifier>
 </path>
 ```
 
-Maven compiler plugin içinde
-`com.reactor.rust.cache.codegen.ProjectionRegistryProcessor` seçin. Release build,
-`com/reactor/rust/cache/codegen` paketinin runtime JAR içinde olmadığını doğrular.
+Codegen JAR processor'ları otomatik bulur. Her uygulama POM'una processor sınıf adlarını yazmanız
+gerekmez. Release build, processor sınıflarının ve processor service metadata'sının runtime JAR
+içinde olmadığını doğrular.
 
 BEST: Lifecycle boilerplate kodunu library'ye bırakın. SQL, row mapping, JSON shape ve cache key business kararlarını uygulama kodunda açık tutun.
 
@@ -522,4 +550,4 @@ parametresini vermeyin.
 
 Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Production beklentisi şudur: bozuk socket atılır ve sonraki operation yeni Redis connection açar.
 
-Sürüm ayrıntıları: [java-rust-cache 0.5.0](docs/RELEASE_NOTES_v0.5.0.md).
+Sürüm ayrıntıları: [java-rust-cache 0.6.0](docs/RELEASE_NOTES_v0.6.0.md).

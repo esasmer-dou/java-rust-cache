@@ -109,6 +109,19 @@ public final class ProjectionRegistryProcessor extends AbstractProcessor {
                             + constants.get(index) + ", owner::" + methodNames.get(index) + ");\n");
                 }
                 writer.write("        return builder.build();\n");
+                writer.write("    }\n\n");
+                writer.write("    public static com.reactor.rust.cache.projection.VersionedJsonProjectionMaterializer create(\n");
+                writer.write("            " + ownerName + " owner,\n");
+                writer.write("            com.reactor.rust.cache.core.RustCache cache,\n");
+                writer.write("            com.reactor.rust.cache.config.CacheProperties properties,\n");
+                writer.write("            String rootPrefix) {\n");
+                writer.write("        String root = rootPrefix == null ? \"\" : rootPrefix.trim();\n");
+                writer.write("        if (root.isEmpty()) throw new IllegalArgumentException("
+                        + "\"rootPrefix must not be blank\");\n");
+                writer.write("        var settings = com.reactor.rust.cache.projection.CacheWriterProjectionSettings"
+                        + ".resolveAll(properties, root);\n");
+                writer.write("        int batchSize = properties.getInt(root + \".snapshot-batch-size\");\n");
+                writer.write("        return create(owner, cache, settings, batchSize);\n");
                 writer.write("    }\n");
                 writer.write("}\n");
             }

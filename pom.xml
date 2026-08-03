@@ -6,7 +6,7 @@
 
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
   <packaging>jar</packaging>
 
   <name>java-rust-cache</name>
@@ -17,7 +17,7 @@
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <hikaricp.version>5.1.0</hikaricp.version>
-    <rust-java-rest.version>4.0.0</rust-java-rest.version>
+    <rust-java-rest.version>4.1.0</rust-java-rest.version>
     <junit.version>5.11.4</junit.version>
   </properties>
 
@@ -54,6 +54,24 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>copy-codegen-services</id>
+            <phase>prepare-package</phase>
+            <goals><goal>copy-resources</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+              <resources>
+                <resource><directory>src/codegen/resources</directory></resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <version>3.4.2</version>
         <executions>
@@ -62,6 +80,7 @@
             <configuration>
               <excludes>
                 <exclude>com/reactor/rust/cache/codegen/**</exclude>
+                <exclude>META-INF/services/javax.annotation.processing.Processor</exclude>
               </excludes>
             </configuration>
           </execution>
@@ -75,6 +94,7 @@
               <classifier>codegen</classifier>
               <includes>
                 <include>com/reactor/rust/cache/codegen/**</include>
+                <include>META-INF/services/javax.annotation.processing.Processor</include>
               </includes>
             </configuration>
           </execution>
