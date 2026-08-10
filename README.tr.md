@@ -8,12 +8,28 @@ Bu proje bilinçli olarak Jedis, Lettuce, Spring Data Redis, Netty, runtime refl
 
 JAR içinde Windows x64 ve Linux x64 native binary dosyaları bulunur. Aynı uygulamada `rust-java-rest` zaten varsa `java-rust-cache` aynı native bridge çizgisiyle çalışır. Yoksa kendi paketlediği `rust_hyper` binary dosyasını çıkarıp yükler. Özel native build kullanmıyorsanız `java.library.path` vermeniz gerekmez.
 
+## Beş Dakikada Karar Verin
+
+| Process | Access mode | Önerilen API |
+| --- | --- | --- |
+| Hazır JSON okuyan REST API | `read-only` | Generated projection reader ve native response handle |
+| PostgreSQL'den Redis'e yazan scheduler | `write-only` | Projection writer ve fenced snapshot publish |
+| Gerçekten hem okuyan hem yazan yönetim aracı | `read-write` | Açık `RustCache` işlemleri |
+
+Normal CQRS yapısında reader ve writer process'lerini ayırın. `read-only`, native write plane açmaz.
+`write-only`, native read plane açmaz. Böylece kullanılmayan pool yalnız Java'da kapatılmaz; native
+tarafta da oluşturulmaz.
+
+Business kodunda Redis key'lerini elle birleştirmek yerine versioned snapshot ve deklaratif
+projection kullanın. Java hangi verinin yayınlanacağına karar verir. RESP, connection, topology
+routing ve bounded I/O işlerini Rust yönetir.
+
 Cluster routing için Redis native ABI `2`, Sentinel master yenileme için ABI `3`, fenced snapshot
 publish için ABI `4`, async GET ve native JSON response handle için ABI `5`, role göre native
 transport plane ayırmak için ABI `6` gerekir. Aynı uygulama
-`rust-java-rest` de kullanıyorsa `rust-java-rest:4.1.0` veya daha yeni aynı çizgiyi kullanın. Böylece
+`rust-java-rest` de kullanıyorsa `rust-java-rest:4.2.0` veya daha yeni aynı çizgiyi kullanın. Böylece
 framework native bridge ile cache library aynı binary sözleşmesini kullanır. Paketlenen provenance
-manifesti REST ABI `24`, Dubbo ABI `7`, Redis ABI `6`, kaynak revision ve platform SHA-256
+manifesti REST ABI `26`, Dubbo ABI `7`, Redis ABI `6`, kaynak revision ve platform SHA-256
 hash'lerini taşır. Eski veya uyumsuz binary startup sırasında reddedilir.
 
 Varsayılan native binary çıkarma dizini:
@@ -59,7 +75,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.6.0</version>
+  <version>0.7.0</version>
 </dependency>
 ```
 
@@ -94,7 +110,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.6.0"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.7.0"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -343,7 +359,7 @@ Processor'ı yalnız build path'e ekleyin:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.6.0</version>
+  <version>0.7.0</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -550,4 +566,4 @@ parametresini vermeyin.
 
 Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Production beklentisi şudur: bozuk socket atılır ve sonraki operation yeni Redis connection açar.
 
-Sürüm ayrıntıları: [java-rust-cache 0.6.0](docs/RELEASE_NOTES_v0.6.0.md).
+Sürüm ayrıntıları: [java-rust-cache 0.7.0](docs/RELEASE_NOTES_v0.7.0.tr.md).

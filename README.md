@@ -8,12 +8,28 @@ This project intentionally does **not** use Jedis, Lettuce, Spring Data Redis, N
 
 The JAR includes the matching Windows x64 and Linux x64 native binaries. If `rust-java-rest` is already on the classpath, `java-rust-cache` reuses its native bridge; otherwise it extracts and loads its own packaged `rust_hyper` binary. A manual `java.library.path` is only needed for custom native builds.
 
+## Five-Minute Decision
+
+| Process | Access mode | Recommended API |
+| --- | --- | --- |
+| REST API reading prepared JSON | `read-only` | Generated projection reader and native response handle |
+| Scheduled DB-to-Redis materializer | `write-only` | Projection writer and fenced snapshot publish |
+| Administrative tool that truly reads and writes | `read-write` | Explicit `RustCache` operations |
+
+Use separate reader and writer processes for the normal CQRS shape. `read-only` does not create the
+native write plane. `write-only` does not create the native read plane. This removes unused pools
+instead of merely disabling methods in Java.
+
+For business code, prefer versioned snapshots and declarative projections over manually composing
+Redis keys. Java decides what data is published. Rust owns RESP, connections, topology routing, and
+bounded I/O.
+
 Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires ABI `3`; fenced
 snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`;
 role-specific native transport planes require ABI `6`. If
 the same application also uses `rust-java-rest`, use the current aligned line,
-`rust-java-rest:4.1.0` or newer, so the framework native bridge and cache library use the same
-binary contract. The packaged provenance manifest records REST ABI `24`, Dubbo ABI `7`, Redis ABI
+`rust-java-rest:4.2.0` or newer, so the framework native bridge and cache library use the same
+binary contract. The packaged provenance manifest records REST ABI `26`, Dubbo ABI `7`, Redis ABI
 `6`, source revision, and platform SHA-256 hashes. Startup rejects a stale or mismatched binary.
 
 By default, packaged native binaries are extracted under:
@@ -57,7 +73,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.6.0</version>
+  <version>0.7.0</version>
 </dependency>
 ```
 
@@ -92,7 +108,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.6.0"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.7.0"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -337,7 +353,7 @@ Add the processor only to the build path:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.6.0</version>
+  <version>0.7.0</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -535,4 +551,4 @@ password-only Redis configuration.
 
 The reconnect gate intentionally allows the first operation after restart to fail. The production expectation is that the failed socket is discarded and the next operation opens a fresh Redis connection.
 
-Release details: [java-rust-cache 0.6.0](docs/RELEASE_NOTES_v0.6.0.md).
+Release details: [java-rust-cache 0.7.0](docs/RELEASE_NOTES_v0.7.0.md).
