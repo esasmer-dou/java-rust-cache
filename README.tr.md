@@ -1,6 +1,9 @@
 # java-rust-cache
 
-[English](https://github.com/esasmer-dou/java-rust-cache/blob/master/README.md) | [Turkish](https://github.com/esasmer-dou/java-rust-cache/blob/master/README.tr.md)
+[English](README.md) | [Türkçe](README.tr.md)
+
+[![Sürüm](https://img.shields.io/badge/sürüm-0.7.1-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.7.1)
+[![REST çizgisi](https://img.shields.io/badge/rust--java--rest-4.3.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.3.0)
 
 `rust-java-rest` ile birlikte çalışmak için hazırlanmış minimum yüzeyli Redis cache istemcisidir.
 
@@ -48,9 +51,47 @@ env:
 
 Native binary dosyasını classpath içine veya JAR içine runtime sırasında yazmaya çalışmayın. Bu alanları read-only runtime artifact olarak düşünün.
 
+## Buradan Başlayın
+
+| Uygulamanız | Başlangıç | Neden? |
+| --- | --- | --- |
+| REST API hazır JSON okuyor | `rust-java-starter-cache-reader` ve `read-only` | Writer pool'u ve scheduler oluşturulmaz. |
+| Zamanlanmış süreç DB read modelini yayınlıyor | `rust-java-starter-cache-writer` ve `write-only` | REST server ve Redis read pool'u oluşturulmaz. |
+| Araç gerçekten hem okuyor hem yazıyor | Doğrudan `java-rust-cache` ve `read-write` | İki veri yolu da açık ve sınırlıdır. |
+
+Normal reader/writer mimarisi için
+[`rest-sample-cache-reader`](https://github.com/esasmer-dou/rest-sample-cache-reader) ve
+[`rest-sample-cache-writer`](https://github.com/esasmer-dou/rest-sample-cache-writer) projelerinden
+başlayın.
+
+## İçindekiler
+
+- [Beş dakikada karar](#beş-dakikada-karar-verin)
+- [Desteklenen kapsam](#desteklenen-kapsam)
+- [Hızlı başlangıç](#kullanım)
+- [Sürümlü snapshot](#versioned-json-snapshot-api)
+- [Deklaratif projection](#declarative-projection-settings)
+- [Konfigürasyon](#configuration)
+- [Standalone, Sentinel ve Cluster](#topology-reçeteleri)
+- [Production doğrulaması](#doğrulama)
+
+## Veri Akışı
+
+```mermaid
+flowchart LR
+    DB["Veritabanı"] --> W["Java materializer"]
+    W -->|"sınırlı native yazma"| R["Redis"]
+    R -->|"sınırlı native okuma"| C["Java cache reader"]
+    C --> H["Rust HTTP response"]
+```
+
+Cache politikası, projection adları, TTL kararı ve iş verisinin dönüşümü Java'da kalır. RESP,
+connection, topology yenileme, in-flight sınırı ve native response handle Rust tarafından yönetilir.
+Kütüphane hangi iş verisinin cache'e alınacağına karar vermez.
+
 Container notu: Paketlenen Linux binary `manylinux2014/glibc 2.17` tabanı ile uyumludur. CentOS 7+, CentOS 8, UBI 8/9, Ubuntu/Jammy ve Semeru/OpenJ9 gibi glibc tabanlı image'larda çalışması hedeflenir. Kendi native binary'nizi üretirseniz, platformunuzun desteklediği en eski Linux tabanında build alın.
 
-## İlk Kapsam
+## Desteklenen Kapsam
 
 Bu library şu işleri hedefler:
 
@@ -565,5 +606,29 @@ Integration Redis ACL veya `requirepass` kullanıyorsa iki Maven komutuna da
 parametresini vermeyin.
 
 Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Production beklentisi şudur: bozuk socket atılır ve sonraki operation yeni Redis connection açar.
+
+## Production Kontrol Listesi
+
+- Ayrı CQRS uygulamalarında `read-only` ve `write-only` kullanın. Alışkanlıkla iki veri yolunu açmayın.
+- Connection, max-in-flight, response byte ve işlem timeout değerlerini sınırlı tutun.
+- TTL değerini ilgili projection'ın yenileme aralığından uzun tutun.
+- Bağımsız zamanlanan her projection için ayrı lock adı kullanın.
+- Cache erişilebilirliği zorunluysa Sentinel veya Cluster kullanın.
+- Pod limitleriyle restart/failover, c64/c256 yük, p99, rejection, RSS ve yük sonrası idle testi yapın.
+- Cache miss durumunu normal iş sonucu olarak ele alın. Transport hatası gibi tekrar denemeyin.
+- Parolayı takip edilen property dosyasına veya release artifact'ine yazmayın.
+
+## Kısa Sözlük
+
+| Terim | Basit anlamı |
+| --- | --- |
+| Projection | Bir endpoint veya sorgu biçimi için hazırlanmış okuma modeli |
+| Snapshot | Tutarlı biçimde yayınlanan, sürümlü projection veri grubu |
+| Fenced lock | Eski writer'ın yayın yapmasını ownership token ile engelleyen dağıtık kilit |
+| Access mode | Açılan native veri yolu: okuma, yazma veya ikisi |
+| Sentinel | Sentinel node'larıyla Redis primary discovery ve failover |
+| Cluster | Redis slot'larının birden fazla primary node'a dağıtılması |
+| In-flight | Başlamış fakat henüz tamamlanmamış işlem |
+| Native handle | Body Rust belleğinde kalırken Java'nın taşıdığı küçük response kimliği |
 
 Sürüm ayrıntıları: [java-rust-cache 0.7.1](docs/RELEASE_NOTES_v0.7.1.tr.md).

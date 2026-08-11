@@ -1,6 +1,9 @@
 # java-rust-cache
 
-[English](https://github.com/esasmer-dou/java-rust-cache/blob/master/README.md) | [Turkish](https://github.com/esasmer-dou/java-rust-cache/blob/master/README.tr.md)
+[English](README.md) | [Türkçe](README.tr.md)
+
+[![Version](https://img.shields.io/badge/version-0.7.1-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.7.1)
+[![REST line](https://img.shields.io/badge/rust--java--rest-4.3.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.3.0)
 
 Minimal Redis cache client for `rust-java-rest`.
 
@@ -47,6 +50,43 @@ env:
 ```
 
 Do not extract into the application classpath or inside the JAR. Those locations should be treated as read-only runtime artifacts.
+
+## Start Here
+
+| Your application | Start with | Why |
+| --- | --- | --- |
+| REST API reads prepared JSON | `rust-java-starter-cache-reader` and `read-only` | No writer pool or scheduler is created. |
+| Scheduled process publishes DB read models | `rust-java-starter-cache-writer` and `write-only` | No REST server or Redis read pool is created. |
+| Tool genuinely reads and writes Redis | Direct `java-rust-cache` and `read-write` | Both planes are explicit and bounded. |
+
+If you are building the normal reader/writer architecture, start from the
+[`rest-sample-cache-reader`](https://github.com/esasmer-dou/rest-sample-cache-reader) and
+[`rest-sample-cache-writer`](https://github.com/esasmer-dou/rest-sample-cache-writer) projects.
+
+## Contents
+
+- [Five-minute decision](#five-minute-decision)
+- [Supported scope](#first-scope)
+- [Quick start](#usage)
+- [Versioned snapshots](#versioned-json-snapshot-api)
+- [Declarative projections](#declarative-projection-settings)
+- [Configuration](#configuration)
+- [Standalone, Sentinel, and Cluster](#topology-recipes)
+- [Production verification](#verification)
+
+## Data Flow
+
+```mermaid
+flowchart LR
+    DB["Database"] --> W["Java materializer"]
+    W -->|"bounded native write"| R["Redis"]
+    R -->|"bounded native read"| C["Java cache reader"]
+    C --> H["Rust HTTP response"]
+```
+
+Java owns cache policy, projection names, TTL decisions, and business mapping. Rust owns RESP,
+connections, topology refresh, bounded in-flight work, and native response handles. The library does
+not decide what business data should be cached.
 
 Container image note: the packaged Linux binary is built on a manylinux2014/glibc 2.17 baseline. It is intended to run on common glibc-based images including CentOS 7+, CentOS 8, UBI 8/9, Ubuntu/Jammy, and Semeru/OpenJ9 images. If you replace the packaged native binary with a custom build, build it on the oldest Linux base your platform supports.
 
@@ -550,5 +590,29 @@ If the integration Redis uses ACL or `requirepass`, add
 password-only Redis configuration.
 
 The reconnect gate intentionally allows the first operation after restart to fail. The production expectation is that the failed socket is discarded and the next operation opens a fresh Redis connection.
+
+## Production Checklist
+
+- Use `read-only` and `write-only` for separate CQRS processes; do not open both planes by habit.
+- Use bounded connection counts, max-in-flight limits, response bytes, and operation timeouts.
+- Keep TTL longer than the matching projection refresh interval.
+- Give every independently scheduled projection its own lock name.
+- Use Sentinel or Cluster when cache availability is a production requirement.
+- Run restart/failover, c64/c256 load, p99, rejection, RSS, and post-idle checks with pod limits.
+- Treat a cache miss as a normal business condition. Do not retry it as a transport failure.
+- Never put credentials in a tracked properties file or release artifact.
+
+## Glossary
+
+| Term | Meaning |
+| --- | --- |
+| Projection | A read model prepared for one endpoint or query shape |
+| Snapshot | One versioned, consistently published projection data set |
+| Fenced lock | A distributed lock whose ownership token prevents a stale writer from publishing |
+| Access mode | Which native transport plane is created: read, write, or both |
+| Sentinel | Redis primary discovery and failover using Sentinel nodes |
+| Cluster | Redis slot distribution across multiple primary nodes |
+| In-flight | Operations started but not yet completed |
+| Native handle | A small Java-visible id for a response body that remains in Rust memory |
 
 Release details: [java-rust-cache 0.7.1](docs/RELEASE_NOTES_v0.7.1.md).
