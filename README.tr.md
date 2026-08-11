@@ -27,7 +27,7 @@ routing ve bounded I/O işlerini Rust yönetir.
 Cluster routing için Redis native ABI `2`, Sentinel master yenileme için ABI `3`, fenced snapshot
 publish için ABI `4`, async GET ve native JSON response handle için ABI `5`, role göre native
 transport plane ayırmak için ABI `6` gerekir. Aynı uygulama
-`rust-java-rest` de kullanıyorsa `rust-java-rest:4.2.0` veya daha yeni aynı çizgiyi kullanın. Böylece
+`rust-java-rest` de kullanıyorsa `rust-java-rest:4.3.0` veya daha yeni aynı çizgiyi kullanın. Böylece
 framework native bridge ile cache library aynı binary sözleşmesini kullanır. Paketlenen provenance
 manifesti REST ABI `26`, Dubbo ABI `7`, Redis ABI `6`, kaynak revision ve platform SHA-256
 hash'lerini taşır. Eski veya uyumsuz binary startup sırasında reddedilir.
@@ -75,7 +75,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.7.0</version>
+  <version>0.7.1</version>
 </dependency>
 ```
 
@@ -110,7 +110,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.7.0"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.7.1"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -359,7 +359,7 @@ Processor'ı yalnız build path'e ekleyin:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.7.0</version>
+  <version>0.7.1</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -566,4 +566,4 @@ parametresini vermeyin.
 
 Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Production beklentisi şudur: bozuk socket atılır ve sonraki operation yeni Redis connection açar.
 
-Sürüm ayrıntıları: [java-rust-cache 0.7.0](docs/RELEASE_NOTES_v0.7.0.tr.md).
+Sürüm ayrıntıları: [java-rust-cache 0.7.1](docs/RELEASE_NOTES_v0.7.1.tr.md).
