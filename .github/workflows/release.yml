@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example 0.7.2"
+        description: "Release version, for example 0.7.3"
         required: true
         type: string
       repair_partial_package:
@@ -61,7 +61,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: esasmer-dou/rust-java-rest
-          ref: v4.4.0
+          ref: v4.4.1
           path: rust-java-rest-dependency
 
       - name: Install aligned rust-java-rest locally
@@ -88,6 +88,9 @@ jobs:
           grep -qx 'redis.abi=6' "$MANIFEST"
           grep -qx 'glowroot.abi=1' "$MANIFEST"
           grep -Eq '^source.revision=[0-9a-f]{40}$' "$MANIFEST"
+          REVISION="$(sed -n 's/^source.revision=//p' "$MANIFEST")"
+          strings src/main/resources/native/linux-x64/librust_hyper-linux-x64.so | grep -Fq "$REVISION"
+          strings src/main/resources/native/windows-x64/rust_hyper-windows-x64.dll | grep -Fq "$REVISION"
           ! grep -q -- '-dirty$' "$MANIFEST"
           LINUX_EXPECTED="$(sed -n 's/^linux-x64.sha256=//p' "$MANIFEST")"
           WINDOWS_EXPECTED="$(sed -n 's/^windows-x64.sha256=//p' "$MANIFEST")"
