@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example 0.7.1"
+        description: "Release version, for example 0.7.2"
         required: true
         type: string
 
@@ -49,7 +49,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: esasmer-dou/rust-java-rest
-          ref: v4.3.0
+          ref: v4.4.0
           path: rust-java-rest-dependency
 
       - name: Install aligned rust-java-rest locally
@@ -71,9 +71,11 @@ jobs:
           MANIFEST="src/main/resources/native/native-provenance.properties"
           test -f "$MANIFEST"
           grep -qx 'schema=2' "$MANIFEST"
-          grep -qx 'rest.abi=26' "$MANIFEST"
+          grep -qx 'rest.abi=28' "$MANIFEST"
           grep -qx 'dubbo.abi=7' "$MANIFEST"
           grep -qx 'redis.abi=6' "$MANIFEST"
+          grep -qx 'glowroot.abi=1' "$MANIFEST"
+          grep -Eq '^source.revision=[0-9a-f]{40}$' "$MANIFEST"
           ! grep -q -- '-dirty$' "$MANIFEST"
           LINUX_EXPECTED="$(sed -n 's/^linux-x64.sha256=//p' "$MANIFEST")"
           WINDOWS_EXPECTED="$(sed -n 's/^windows-x64.sha256=//p' "$MANIFEST")"

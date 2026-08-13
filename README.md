@@ -2,8 +2,8 @@
 
 [English](README.md) | [Türkçe](README.tr.md)
 
-[![Version](https://img.shields.io/badge/version-0.7.1-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.7.1)
-[![REST line](https://img.shields.io/badge/rust--java--rest-4.3.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.3.0)
+[![Version](https://img.shields.io/badge/version-0.7.2-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.7.2)
+[![REST line](https://img.shields.io/badge/rust--java--rest-4.4.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.4.0)
 
 Minimal Redis cache client for `rust-java-rest`.
 
@@ -31,9 +31,10 @@ Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires 
 snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`;
 role-specific native transport planes require ABI `6`. If
 the same application also uses `rust-java-rest`, use the current aligned line,
-`rust-java-rest:4.3.0` or newer, so the framework native bridge and cache library use the same
-binary contract. The packaged provenance manifest records REST ABI `26`, Dubbo ABI `7`, Redis ABI
-`6`, source revision, and platform SHA-256 hashes. Startup rejects a stale or mismatched binary.
+`rust-java-rest:4.4.0` or newer, so the framework native bridge and cache library use the same
+binary contract. The packaged provenance manifest records REST ABI `28`, Dubbo ABI `7`, Redis ABI
+`6`, Glowroot ABI `1`, the full source revision, and platform SHA-256 hashes. Startup rejects a
+stale or mismatched binary.
 
 By default, packaged native binaries are extracted under:
 
@@ -113,7 +114,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.7.1</version>
+  <version>0.7.2</version>
 </dependency>
 ```
 
@@ -148,7 +149,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.7.1"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.7.2"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -393,7 +394,7 @@ Add the processor only to the build path:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.7.1</version>
+  <version>0.7.2</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -615,4 +616,4 @@ The reconnect gate intentionally allows the first operation after restart to fai
 | In-flight | Operations started but not yet completed |
 | Native handle | A small Java-visible id for a response body that remains in Rust memory |
 
-Release details: [java-rust-cache 0.7.1](docs/RELEASE_NOTES_v0.7.1.md).
+Release details: [java-rust-cache 0.7.2](docs/RELEASE_NOTES_v0.7.2.md).
