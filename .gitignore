@@ -4,4 +4,14 @@ target/
 .idea/
 .vscode/
 *.iml
-benchmark/results/
+# Local engineering and collaboration artifacts
+/benchmark/
+/.agents/
+/.codex/
+/AGENTS.md
+/PROJECT_MEMORY.md
+/MEMORY.md
+/HANDOFF.md
+/docs/PROJECT_MEMORY.md
+/docs/MEMORY.md
+/docs/HANDOFF.md
