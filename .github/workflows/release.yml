@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example 0.7.4"
+        description: "Release version, for example 0.7.5"
         required: true
         type: string
       repair_partial_package:
@@ -61,7 +61,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: esasmer-dou/rust-java-rest
-          ref: v4.5.0
+          ref: v4.5.5
           path: rust-java-rest-dependency
 
       - name: Install aligned rust-java-rest locally
