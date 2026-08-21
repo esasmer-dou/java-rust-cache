@@ -6,7 +6,7 @@
 
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.7.5</version>
+  <version>0.7.6</version>
   <packaging>jar</packaging>
 
   <name>java-rust-cache</name>
@@ -17,7 +17,7 @@
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <hikaricp.version>5.1.0</hikaricp.version>
-    <rust-java-rest.version>4.5.5</rust-java-rest.version>
+    <rust-java-rest.version>4.6.0</rust-java-rest.version>
     <junit.version>5.11.4</junit.version>
   </properties>
 

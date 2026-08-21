@@ -2,8 +2,8 @@
 
 [English](README.md) | [Türkçe](README.tr.md)
 
-[![Sürüm](https://img.shields.io/badge/sürüm-0.7.5-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.7.5)
-[![REST çizgisi](https://img.shields.io/badge/rust--java--rest-4.5.5-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.5.5)
+[![Sürüm](https://img.shields.io/badge/sürüm-0.7.6-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.7.6)
+[![REST çizgisi](https://img.shields.io/badge/rust--java--rest-4.6.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.6.0)
 
 `rust-java-rest` ile birlikte çalışmak için hazırlanmış minimum yüzeyli Redis cache istemcisidir.
 
@@ -30,9 +30,9 @@ routing ve bounded I/O işlerini Rust yönetir.
 Cluster routing için Redis native ABI `2`, Sentinel master yenileme için ABI `3`, fenced snapshot
 publish için ABI `4`, async GET ve native JSON response handle için ABI `5`, role göre native
 transport plane ayırmak için ABI `6` gerekir. Aynı uygulama
-`rust-java-rest` de kullanıyorsa ABI `29` içindeki `rust-java-rest:4.5.5` veya daha yeni sürümü kullanın. Böylece
+`rust-java-rest` de kullanıyorsa ABI `29` içindeki `rust-java-rest:4.6.0` veya daha yeni sürümü kullanın. Böylece
 framework native bridge ile cache library aynı binary sözleşmesini kullanır. Paketlenen provenance
-manifesti REST ABI `29`, Dubbo ABI `7`, Redis ABI `6`, Glowroot ABI `3`, tam kaynak revision ve
+manifesti REST ABI `29`, Dubbo ABI `7`, Redis ABI `6`, Glowroot ABI `4`, tam kaynak revision ve
 platform SHA-256 hash'lerini taşır. Eski veya uyumsuz binary startup sırasında reddedilir.
 
 Varsayılan native binary çıkarma dizini:
@@ -116,7 +116,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.7.5</version>
+  <version>0.7.6</version>
 </dependency>
 ```
 
@@ -151,7 +151,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.7.5"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.7.6"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -400,7 +400,7 @@ Processor'ı yalnız build path'e ekleyin:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.7.5</version>
+  <version>0.7.6</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -631,4 +631,4 @@ Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Prod
 | In-flight | Başlamış fakat henüz tamamlanmamış işlem |
 | Native handle | Body Rust belleğinde kalırken Java'nın taşıdığı küçük response kimliği |
 
-Sürüm ayrıntıları: [java-rust-cache 0.7.5](docs/RELEASE_NOTES_v0.7.5.tr.md).
+Sürüm ayrıntıları: [java-rust-cache 0.7.6](docs/RELEASE_NOTES_v0.7.6.tr.md).
