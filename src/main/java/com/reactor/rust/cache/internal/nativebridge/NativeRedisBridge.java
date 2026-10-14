@@ -380,7 +380,7 @@ public final class NativeRedisBridge {
                 return new UnsatisfiedLinkError("Missing packaged native resource: " + resource);
             }
             byte[] bytes = input.readAllBytes();
-            String platform = resource.contains("windows-x64") ? "windows-x64" : "linux-x64";
+            String platform = platformName(resource);
             String hash = NativeCacheProvenance.verifyPackagedBinary(
                     NativeRedisBridge.class.getClassLoader(),
                     platform,
@@ -440,19 +440,42 @@ public final class NativeRedisBridge {
     }
 
     private static String platformResource() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
-        boolean x64 = arch.equals("amd64") || arch.equals("x86_64");
-        if (!x64) {
-            return null;
-        }
-        if (os.contains("win")) {
+        return platformResource(System.getProperty("os.name", ""), System.getProperty("os.arch", ""));
+    }
+
+    static String platformResource(String osName, String osArch) {
+        String os = osName == null ? "" : osName.toLowerCase(Locale.ROOT);
+        String arch = osArch == null ? "" : osArch.toLowerCase(Locale.ROOT);
+        boolean x64 = arch.equals("amd64") || arch.equals("x86_64") || arch.equals("x64");
+        boolean arm64 = arch.equals("aarch64") || arch.equals("arm64");
+        if (os.contains("win") && x64) {
             return "native/windows-x64/rust_hyper-windows-x64.dll";
         }
-        if (os.contains("linux")) {
+        if (os.contains("linux") && x64) {
             return "native/linux-x64/librust_hyper-linux-x64.so";
         }
+        if ((os.contains("mac") || os.contains("darwin")) && arm64) {
+            return "native/macos-arm64/librust_hyper-macos-arm64.dylib";
+        }
+        if (os.contains("linux") && arm64) {
+            return "native/linux-arm64/librust_hyper-linux-arm64.so";
+        }
         return null;
+    }
+
+    static String platformName(String resource) {
+        if (resource == null || !resource.startsWith("native/")) {
+            throw new IllegalArgumentException("Invalid packaged native resource: " + resource);
+        }
+        int separator = resource.indexOf('/', "native/".length());
+        if (separator < 0) {
+            throw new IllegalArgumentException("Invalid packaged native resource: " + resource);
+        }
+        String platform = resource.substring("native/".length(), separator);
+        return switch (platform) {
+            case "windows-x64", "linux-x64", "macos-arm64", "linux-arm64" -> platform;
+            default -> throw new IllegalArgumentException("Unsupported packaged native platform: " + platform);
+        };
     }
 
     private static native int nativeCreateClient(

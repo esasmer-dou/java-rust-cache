@@ -120,6 +120,23 @@ Maven dependency:
 </dependency>
 ```
 
+### Native Platform Seçimi
+
+Yükleyici, işletim sistemi ve işlemci mimarisine göre dosyayı seçer:
+
+| Platform | Cache resource yolu |
+| --- | --- |
+| Windows x64 | `native/windows-x64/rust_hyper-windows-x64.dll` |
+| Linux x64 | `native/linux-x64/librust_hyper-linux-x64.so` |
+| macOS ARM64 | `native/macos-arm64/librust_hyper-macos-arm64.dylib` |
+| Linux ARM64 | `native/linux-arm64/librust_hyper-linux-arm64.so` |
+
+ARM64 yol seçimi bu kaynak ağacında bulunur. Yayınlanmış `0.7.6` paketi hâlâ x64 dosyalarını içerir.
+ARM64 kullanmadan önce uygun binary ve checksum dosyasını REST reposundaki
+`scripts/sync-native-artifacts.ps1` ile paketleyin. Yükleyici, dosyayı açmadan önce Redis ABI `6`
+ve seçilen platformun hash bilgisini doğrular. Yalnız cache kullanan process, REST veya Glowroot
+ABI işlevlerini çağırmaz. Ayar verilmezse dosya `${user.home}/.java-rust-cache/native` altında açılır.
+
 ### GitHub Packages Erişimi
 
 `java-rust-cache` GitHub Packages üzerinden yayınlanır. Maven paketi indirebilmek için authenticate olmalıdır. Bu GitHub Packages'ın normal erişim modelidir.

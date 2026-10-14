@@ -118,6 +118,23 @@ Maven dependency:
 </dependency>
 ```
 
+### Native Platform Selection
+
+The loader chooses the resource from the operating system and CPU architecture:
+
+| Platform | Cache resource |
+| --- | --- |
+| Windows x64 | `native/windows-x64/rust_hyper-windows-x64.dll` |
+| Linux x64 | `native/linux-x64/librust_hyper-linux-x64.so` |
+| macOS ARM64 | `native/macos-arm64/librust_hyper-macos-arm64.dylib` |
+| Linux ARM64 | `native/linux-arm64/librust_hyper-linux-arm64.so` |
+
+ARM64 path selection is available in this checkout. The published `0.7.6` package still contains
+the x64 artifacts. Before using ARM64, package the matching binary and checksum with the
+REST repository's `scripts/sync-native-artifacts.ps1`. The loader verifies Redis ABI `6` and the
+selected platform's hash before loading it. The cache-only process does not consume REST or
+Glowroot ABI exports. Extraction stays under `${user.home}/.java-rust-cache/native` unless configured.
+
 ### GitHub Packages Access
 
 `java-rust-cache` is published through GitHub Packages. Maven must authenticate before it can download the package; this is GitHub Packages' normal access model.
