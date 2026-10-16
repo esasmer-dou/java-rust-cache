@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example 0.7.6"
+        description: "Release version, for example 0.7.7"
         required: true
         type: string
       repair_partial_package:
@@ -20,9 +20,14 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -61,7 +66,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: esasmer-dou/rust-java-rest
-          ref: v4.6.0
+          ref: v4.6.3
           path: rust-java-rest-dependency
 
       - name: Install aligned rust-java-rest locally
@@ -86,7 +91,7 @@ jobs:
           grep -qx 'rest.abi=29' "$MANIFEST"
           grep -qx 'dubbo.abi=7' "$MANIFEST"
           grep -qx 'redis.abi=6' "$MANIFEST"
-          grep -qx 'glowroot.abi=4' "$MANIFEST"
+          grep -qx 'glowroot.abi=6' "$MANIFEST"
           grep -qx 'linux-x64.glibc-minimum=2.17' "$MANIFEST"
           grep -Eq '^source.revision=[0-9a-f]{40}$' "$MANIFEST"
           REVISION="$(sed -n 's/^source.revision=//p' "$MANIFEST")"
@@ -100,6 +105,18 @@ jobs:
           bash scripts/verify-linux-native-compatibility.sh \
             src/main/resources/native/linux-x64/librust_hyper-linux-x64.so \
             2.17
+          grep -qx 'linux-arm64.glibc-minimum=2.17' "$MANIFEST"
+          for PLATFORM in linux-arm64 macos-arm64; do
+            EXT=so
+            [ "$PLATFORM" != macos-arm64 ] || EXT=dylib
+            BINARY="src/main/resources/native/$PLATFORM/librust_hyper-$PLATFORM.$EXT"
+            EXPECTED="$(sed -n "s/^$PLATFORM.sha256=//p" "$MANIFEST")"
+            test -n "$EXPECTED"
+            test "$(sha256sum "$BINARY" | awk '{print $1}')" = "$EXPECTED"
+            strings "$BINARY" | grep -Fq "$REVISION"
+          done
+          bash scripts/verify-linux-native-compatibility.sh \
+            src/main/resources/native/linux-arm64/librust_hyper-linux-arm64.so 2.17
 
       - name: Remove incomplete Maven package version
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.repair_partial_package }}
@@ -139,6 +156,9 @@ jobs:
           cp "target/java-rust-cache-${VERSION}-sources.jar" release-assets/
           cp "src/main/resources/native/windows-x64/rust_hyper-windows-x64.dll" release-assets/
           cp "src/main/resources/native/linux-x64/librust_hyper-linux-x64.so" release-assets/
+          cp "src/main/resources/native/linux-arm64/librust_hyper-linux-arm64.so" release-assets/
+          cp "src/main/resources/native/macos-arm64/librust_hyper-macos-arm64.dylib" release-assets/
+          cp "src/main/resources/native/native-provenance.properties" release-assets/
           (cd release-assets && sha256sum * > SHA256SUMS)
 
       - name: Create GitHub release
