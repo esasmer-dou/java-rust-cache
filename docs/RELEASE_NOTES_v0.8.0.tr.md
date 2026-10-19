@@ -12,4 +12,8 @@ Windows x64, Linux x64/ARM64 ve macOS ARM64 dosyaları temiz kaynak manifestiyle
 
 Allocator, huge-page veya nursery denemeleri varsayılan ayar yapılmaz.
 
+## Doğrulama Notu
+
+Eş koşullu Linux ölçümünde cache c16/c64 RPS ve p99 değerleri iyileşti. Writer tekrar doğrulamasında ortalama tepe RSS 92,417 MiB'den 91,382 MiB'ye düştü. Ancak son boşta RSS 77,268 MiB'den 78,591 MiB'ye çıktı. Bu artış yayın için kabul edilen bir risktir. Birlikte ölçülen consumer tarafında da kabul edilmiş sapmalar vardır. [Ölçüm kapsamını ve değişmeyen katı kontrol sonuçlarını](https://github.com/esasmer-dou/rust-java-rest/blob/v4.7.0/docs/release-notes/v4.7.0.tr.md) inceleyin.
+
 [Örnekler ve maliyetler](functional-operations.tr.md) | [English](RELEASE_NOTES_v0.8.0.md)
