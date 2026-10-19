@@ -375,14 +375,15 @@ public final class NativeRedisBridge {
                     + System.getProperty("os.name") + "/" + System.getProperty("os.arch"));
         }
 
-        try (InputStream input = NativeRedisBridge.class.getClassLoader().getResourceAsStream(resource)) {
-            if (input == null) {
+        java.net.URL binaryResource = NativeRedisBridge.class.getClassLoader().getResource(resource);
+        if (binaryResource == null) {
                 return new UnsatisfiedLinkError("Missing packaged native resource: " + resource);
-            }
+        }
+        try (InputStream input = binaryResource.openStream()) {
             byte[] bytes = input.readAllBytes();
             String platform = platformName(resource);
             String hash = NativeCacheProvenance.verifyPackagedBinary(
-                    NativeRedisBridge.class.getClassLoader(),
+                    binaryResource,
                     platform,
                     bytes,
                     REDIS_ACCESS_MODE_ABI_VERSION

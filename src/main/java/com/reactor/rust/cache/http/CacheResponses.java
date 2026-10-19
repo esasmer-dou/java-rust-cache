@@ -31,13 +31,16 @@ public final class CacheResponses {
             String missCode,
             String notReadyCode,
             String unavailableMessage) {
-        return json(result, new CacheResponsePolicy(
-                missCode,
-                unavailableMessage,
-                com.reactor.rust.http.HttpStatus.NOT_FOUND,
-                notReadyCode,
-                unavailableMessage,
-                com.reactor.rust.http.HttpStatus.NOT_FOUND));
+        String checkedMissCode = CacheResponsePolicy.requireText(missCode, "missCode");
+        String checkedMessage = CacheResponsePolicy.requireText(unavailableMessage, "missMessage");
+        String checkedNotReadyCode = CacheResponsePolicy.requireText(notReadyCode, "notReadyCode");
+        Objects.requireNonNull(result, "result");
+        if (result.hit()) {
+            return ResponseEntity.ok(RawResponse.json(result.bytes()));
+        }
+        boolean notReady = result.isCacheNotReady() || result.isStale();
+        return ResponseEntity.status(com.reactor.rust.http.HttpStatus.NOT_FOUND,
+                JsonResponses.error(notReady ? checkedNotReadyCode : checkedMissCode, checkedMessage));
     }
 
     public static ResponseEntity<RawResponse> json(
@@ -48,12 +51,24 @@ public final class CacheResponses {
         if (result.hit()) {
             return ResponseEntity.ok(RawResponse.json(result.bytes()));
         }
-        boolean notReady = result.isCacheNotReady();
+        boolean notReady = result.isCacheNotReady() || result.isStale();
         return ResponseEntity.status(
                 notReady ? policy.notReadyStatus() : policy.missStatus(),
                 JsonResponses.error(
                         notReady ? policy.notReadyCode() : policy.missCode(),
                         notReady ? policy.notReadyMessage() : policy.missMessage()));
+    }
+
+    /** Opt-in common error contract. Existing json overloads retain their wire contract. */
+    public static ResponseEntity<RawResponse> problem(CacheReadResult result) {
+        if (result.hit()) {
+            ResponseEntity<RawResponse> response = ResponseEntity.ok(RawResponse.json(result.bytes()));
+            return result.isStale() ? response.header("X-Cache-Stale", "true") : response;
+        }
+        int status = result.isMiss() ? 404 : 503;
+        String code = result.isMiss() ? "not_found" : result.isStale() ? "cache_stale" : "cache_not_ready";
+        return com.reactor.rust.http.ErrorResponses.from(new com.reactor.rust.exception.HttpErrorMapper.MappedError(
+                status, code, result.isMiss() ? "Resource not found" : "Cache snapshot is not ready or is too old"));
     }
 
 }

@@ -65,6 +65,19 @@ final class VersionedJsonKeys {
             throw new IllegalArgumentException("cache key part must not be blank");
         }
         String trimmed = value.trim();
+        boolean unreservedAscii = true;
+        for (int i = 0; i < trimmed.length(); i++) {
+            if (!isUnreserved(trimmed.charAt(i))) {
+                unreservedAscii = false;
+                break;
+            }
+        }
+        if (unreservedAscii) {
+            if (trimmed.length() > MAX_KEY_PART_BYTES) {
+                throw new IllegalArgumentException("cache key part is too long: " + trimmed.length() + " bytes");
+            }
+            return trimmed;
+        }
         byte[] bytes = trimmed.getBytes(StandardCharsets.UTF_8);
         if (bytes.length > MAX_KEY_PART_BYTES) {
             throw new IllegalArgumentException("cache key part is too long: " + bytes.length + " bytes");

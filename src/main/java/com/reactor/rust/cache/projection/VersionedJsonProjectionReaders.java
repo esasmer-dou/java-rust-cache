@@ -35,7 +35,7 @@ public final class VersionedJsonProjectionReaders {
         for (CacheReaderProjectionSettings setting : settings) {
             if (readers.putIfAbsent(
                     setting.name(),
-                    cache.versionedJsonReader(setting.namespace(), versionCacheMillis)) != null) {
+                    VersionedJsonCacheReader.create(cache, setting.namespace(), versionCacheMillis, setting.freshness())) != null) {
                 throw new IllegalArgumentException("Duplicate projection name: " + setting.name());
             }
         }

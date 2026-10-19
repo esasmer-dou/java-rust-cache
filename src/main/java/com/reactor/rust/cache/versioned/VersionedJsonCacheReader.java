@@ -10,8 +10,9 @@ public final class VersionedJsonCacheReader {
     private final RustCache cache;
     private final String namespace;
     private final long versionCacheMillis;
-    private volatile String cachedVersion;
-    private volatile long cachedVersionUntilMillis;
+    private final CacheFreshness freshness;
+    private volatile Version cached;
+    private record Version(String value, long untilMillis, long freshUntilMillis) {}
 
     public static VersionedJsonCacheReader create(RustCache cache, String namespace) {
         return create(cache, namespace, VersionedJsonKeys.DEFAULT_VERSION_CACHE_MILLIS);
@@ -28,56 +29,84 @@ public final class VersionedJsonCacheReader {
     }
 
     VersionedJsonCacheReader(RustCache cache, String namespace, long versionCacheMillis) {
+        this(cache, namespace, versionCacheMillis, CacheFreshness.DISABLED);
+    }
+
+    public static VersionedJsonCacheReader create(RustCache cache, String namespace,
+                                                  long versionCacheMillis, CacheFreshness freshness) {
+        return new VersionedJsonCacheReader(Objects.requireNonNull(cache),
+                VersionedJsonKeys.normalizeNamespace(namespace), versionCacheMillis, Objects.requireNonNull(freshness));
+    }
+
+    private VersionedJsonCacheReader(RustCache cache, String namespace, long versionCacheMillis, CacheFreshness freshness) {
         this.cache = cache;
         this.namespace = namespace;
         this.versionCacheMillis = VersionedJsonKeys.requireVersionCacheMillis(versionCacheMillis);
+        this.freshness = freshness;
     }
 
     public CacheReadResult getById(long id) {
-        String version = currentVersion();
+        Version version = currentVersion();
         if (version == null) {
             return CacheReadResult.cacheNotReady();
         }
-        byte[] bytes = cache.getBytes(VersionedJsonKeys.idKey(namespace, version, id));
-        return bytes == null ? CacheReadResult.miss() : CacheReadResult.hit(bytes);
+        if (stale(version) && !freshness.serveStale()) return CacheReadResult.stale();
+        byte[] bytes = cache.getBytes(VersionedJsonKeys.idKey(namespace, version.value(), id));
+        return result(bytes, version);
     }
 
     public CacheReadResult getIndex(String indexName, String indexValue) {
-        String version = currentVersion();
+        Version version = currentVersion();
         if (version == null) {
             return CacheReadResult.cacheNotReady();
         }
-        byte[] bytes = cache.getBytes(VersionedJsonKeys.indexKey(namespace, version, indexName, indexValue));
-        return bytes == null ? CacheReadResult.miss() : CacheReadResult.hit(bytes);
+        if (stale(version) && !freshness.serveStale()) return CacheReadResult.stale();
+        byte[] bytes = cache.getBytes(VersionedJsonKeys.indexKey(namespace, version.value(), indexName, indexValue));
+        return result(bytes, version);
     }
 
     public CacheReadResult getMeta() {
-        String version = currentVersion();
+        Version version = currentVersion();
         if (version == null) {
             return CacheReadResult.cacheNotReady();
         }
-        byte[] bytes = cache.getBytes(VersionedJsonKeys.metaKey(namespace, version));
-        return bytes == null ? CacheReadResult.miss() : CacheReadResult.hit(bytes);
+        if (stale(version) && !freshness.serveStale()) return CacheReadResult.stale();
+        byte[] bytes = cache.getBytes(VersionedJsonKeys.metaKey(namespace, version.value()));
+        return result(bytes, version);
     }
 
     public void invalidateVersionCache() {
-        cachedVersion = null;
-        cachedVersionUntilMillis = 0L;
+        cached = null;
     }
 
-    private String currentVersion() {
+    private CacheReadResult result(byte[] bytes, Version version) {
+        if (bytes == null) return CacheReadResult.miss();
+        if (!stale(version)) return CacheReadResult.hit(bytes);
+        return freshness.serveStale() ? CacheReadResult.staleHit(bytes) : CacheReadResult.stale();
+    }
+
+    private boolean stale(Version version) {
+        return freshness.maxAgeMillis() != 0 && System.currentTimeMillis() > version.freshUntilMillis();
+    }
+
+    private Version currentVersion() {
         long now = System.currentTimeMillis();
-        String version = cachedVersion;
-        if (version != null && now < cachedVersionUntilMillis) {
+        Version version = cached;
+        if (version != null && now < version.untilMillis()) {
             return version;
         }
-        version = VersionedJsonKeys.decodeCurrentVersion(
+        String value = VersionedJsonKeys.decodeCurrentVersion(
                 cache.getString(VersionedJsonKeys.currentKey(namespace))
         );
-        if (version != null && versionCacheMillis > 0) {
-            cachedVersion = version;
-            cachedVersionUntilMillis = now + versionCacheMillis;
+        if (value == null) return null;
+        long freshUntil = 0;
+        if (freshness.maxAgeMillis() > 0 && !freshness.stale(value, now)) {
+            long created = Long.parseLong(value.substring(0, value.indexOf('-')));
+            freshUntil = created > Long.MAX_VALUE - freshness.maxAgeMillis()
+                    ? Long.MAX_VALUE : created + freshness.maxAgeMillis();
         }
+        version = new Version(value, now + versionCacheMillis, freshUntil);
+        if (versionCacheMillis > 0) cached = version;
         return version;
     }
 }

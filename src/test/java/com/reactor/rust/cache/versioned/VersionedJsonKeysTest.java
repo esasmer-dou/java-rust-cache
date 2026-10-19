@@ -3,6 +3,7 @@ package com.reactor.rust.cache.versioned;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class VersionedJsonKeysTest {
@@ -11,6 +12,34 @@ class VersionedJsonKeysTest {
     void keepsSafeKeyPartsReadable() {
         assertEquals("customer-cache", VersionedJsonKeys.normalizeNamespace(" customer-cache "));
         assertEquals("VIP_2026.active", VersionedJsonKeys.sanitize("VIP_2026.active"));
+    }
+
+    @Test
+    void safeAsciiIsReusedWithoutEncodingAllocation() {
+        String input = new String("segment-standard_2026.active");
+        assertSame(input, VersionedJsonKeys.sanitize(input));
+        assertEquals("a".repeat(256), VersionedJsonKeys.sanitize("a".repeat(256)));
+        assertEquals("%C3%BC".repeat(128), VersionedJsonKeys.sanitize("\u00fc".repeat(128)));
+        assertThrows(IllegalArgumentException.class, () -> VersionedJsonKeys.sanitize("\u00fc".repeat(129)));
+    }
+
+    @Test
+    void optimizedEncodingMatchesUtf8ReferenceForMixedInputs() {
+        java.util.Random random = new java.util.Random(4217);
+        for (int test = 0; test < 1000; test++) {
+            StringBuilder input = new StringBuilder("key");
+            for (int i = random.nextInt(32); i > 0; i--) input.append((char) random.nextInt(65536));
+            String value = input.toString();
+            StringBuilder expected = new StringBuilder();
+            for (byte raw : value.trim().getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+                int c = raw & 255;
+                if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+                        || c == '.' || c == '_' || c == '-') expected.append((char) c);
+                else expected.append('%').append("0123456789ABCDEF".charAt(c >>> 4))
+                        .append("0123456789ABCDEF".charAt(c & 15));
+            }
+            assertEquals(expected.toString(), VersionedJsonKeys.sanitize(value));
+        }
     }
 
     @Test

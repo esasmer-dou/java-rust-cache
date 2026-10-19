@@ -23,6 +23,23 @@ final class NativeCacheProvenance {
             byte[] binary,
             int expectedRedisAbi) {
         Properties manifest = loadManifest(classLoader);
+        return verify(manifest, platform, binary, expectedRedisAbi);
+    }
+
+    static String verifyPackagedBinary(java.net.URL binaryResource, String platform, byte[] binary, int expectedRedisAbi) {
+        // Resolve relative to the selected binary, not the first unrelated manifest on the classpath.
+        try {
+            var connection = new java.net.URL(binaryResource, "../native-provenance.properties").openConnection();
+            connection.setUseCaches(false);
+            try (InputStream input = connection.getInputStream()) {
+            Properties manifest = new Properties();
+            manifest.load(input);
+            return verify(manifest, platform, binary, expectedRedisAbi);
+            }
+        } catch (IOException error) { throw new RedisCacheException("Cannot read native provenance beside the selected binary", error); }
+    }
+
+    private static String verify(Properties manifest, String platform, byte[] binary, int expectedRedisAbi) {
         requireEquals(manifest, "schema", "2");
         requireEquals(manifest, "redis.abi", Integer.toString(expectedRedisAbi));
         String expectedHash = required(manifest, platform + ".sha256");

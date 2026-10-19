@@ -4,7 +4,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-public record CacheReaderProjectionSettings(String name, String namespace) {
+public record CacheReaderProjectionSettings(String name, String namespace,
+        com.reactor.rust.cache.versioned.CacheFreshness freshness) {
+    public CacheReaderProjectionSettings(String name, String namespace) {
+        this(name, namespace, com.reactor.rust.cache.versioned.CacheFreshness.DISABLED);
+    }
 
     public static List<String> projectionNames(ProjectionPropertySource properties, String rootPrefix) {
         return parseProjectionNames(properties.get(rootPrefix + ".projections"), rootPrefix + ".projections");
@@ -16,8 +20,26 @@ public record CacheReaderProjectionSettings(String name, String namespace) {
         return projectionNames(properties, rootPrefix).stream()
                 .map(projection -> new CacheReaderProjectionSettings(
                         projection,
-                        namespace(properties, rootPrefix, projection)))
+                        namespace(properties, rootPrefix, projection), freshness(properties, rootPrefix, projection)))
                 .toList();
+    }
+
+    private static com.reactor.rust.cache.versioned.CacheFreshness freshness(ProjectionPropertySource source, String root, String projection) {
+        String age = option(source, root, projection, "max-age-ms");
+        String stale = option(source, root, projection, "serve-stale");
+        if (stale != null && !stale.equalsIgnoreCase("true") && !stale.equalsIgnoreCase("false"))
+            throw new IllegalArgumentException("serve-stale must be true or false");
+        return new com.reactor.rust.cache.versioned.CacheFreshness(age == null ? 0 : Long.parseLong(age), Boolean.parseBoolean(stale));
+    }
+
+    private static String option(ProjectionPropertySource source, String root, String projection, String suffix) {
+        String specific = root + "." + projection + "." + suffix;
+        String global = root + "." + suffix;
+        for (String value : new String[] {source.getRuntimeOverride(specific), source.getRuntimeOverride(global),
+                source.getFileOptional(specific), source.getFileOptional(global)}) {
+            if (hasText(value)) return value.trim();
+        }
+        return null;
     }
 
     private static String namespace(ProjectionPropertySource properties, String rootPrefix, String projection) {

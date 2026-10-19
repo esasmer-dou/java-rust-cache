@@ -2,8 +2,10 @@
 
 [English](README.md) | [Türkçe](README.tr.md)
 
-[![Version](https://img.shields.io/badge/version-0.7.7-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.7.7)
-[![REST line](https://img.shields.io/badge/rust--java--rest-4.6.3-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.6.3)
+New usage guide: [Explicit, bounded operations](docs/functional-operations.md).
+
+[![Version](https://img.shields.io/badge/version-0.8.0-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.8.0)
+[![REST line](https://img.shields.io/badge/rust--java--rest-4.7.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.7.0)
 
 Minimal Redis cache client for `rust-java-rest`.
 
@@ -31,9 +33,9 @@ Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires 
 snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`;
 role-specific native transport planes require ABI `6`. If
 the same application also uses `rust-java-rest`, use the current aligned line,
-`rust-java-rest:4.6.3` or newer within ABI `29`, so the framework native bridge and cache library use the same
+`rust-java-rest:4.7.0` or newer within ABI `29`, so the framework native bridge and cache library use the same
 binary contract. The packaged provenance manifest records REST ABI `29`, Dubbo ABI `7`, Redis ABI
-`6`, Glowroot ABI `4`, the full source revision, and platform SHA-256 hashes. Startup rejects a
+`6`, Glowroot ABI `6`, the full source revision, and platform SHA-256 hashes. Startup rejects a
 stale or mismatched binary.
 
 By default, packaged native binaries are extracted under:
@@ -114,7 +116,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.7.7</version>
+  <version>0.8.0</version>
 </dependency>
 ```
 
@@ -129,7 +131,7 @@ The loader chooses the resource from the operating system and CPU architecture:
 | macOS ARM64 | `native/macos-arm64/librust_hyper-macos-arm64.dylib` |
 | Linux ARM64 | `native/linux-arm64/librust_hyper-linux-arm64.so` |
 
-The `0.7.7` package includes all four native binaries and their matching checksums.
+The `0.8.0` package includes all four native binaries and their matching checksums.
 ARM64 native builds pass CI; application smoke tests for this release use x64.
 For a custom build, use the REST repository's `scripts/sync-native-artifacts.ps1`.
 The loader verifies Redis ABI `6` and the
@@ -167,7 +169,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.7.7"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.8.0"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -412,7 +414,7 @@ Add the processor only to the build path:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.7.7</version>
+  <version>0.8.0</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -634,4 +636,4 @@ The reconnect gate intentionally allows the first operation after restart to fai
 | In-flight | Operations started but not yet completed |
 | Native handle | A small Java-visible id for a response body that remains in Rust memory |
 
-Release details: [java-rust-cache 0.7.7](docs/RELEASE_NOTES_v0.7.7.md).
+Release details: [java-rust-cache 0.8.0](docs/RELEASE_NOTES_v0.8.0.md).
