@@ -36,11 +36,15 @@ function Address([string]$Name){
 function Test-Phase([string]$Name,[string]$Class,[int]$ExpectedExecuted,[string[]]$Properties){
     $directory="$out/$Name"
     New-Item -ItemType Directory -Force $directory | Out-Null
+    $sourceReport="$root/target/surefire-reports/TEST-com.reactor.rust.cache.core.$Class.xml"
+    if(Test-Path -LiteralPath $sourceReport){Remove-Item -LiteralPath $sourceReport}
     Push-Location $root
     try {
-        & mvn -B -ntp test "-Dtest=$Class" "-Dsurefire.reportsDirectory=$directory" @Properties *> "$out/$Name.log"
+        & mvn -B -ntp test "-Dtest=$Class" @Properties *> "$out/$Name.log"
         if($LASTEXITCODE){throw "Native cache phase failed: $Name"}
     } finally {Pop-Location}
+    if(!(Test-Path -LiteralPath $sourceReport)){throw "Missing fresh test report: $Name"}
+    Copy-Item -LiteralPath $sourceReport -Destination $directory
     $reports=@(Get-ChildItem $directory -Filter 'TEST-*.xml')
     if($reports.Count -ne 1){throw "Missing test report: $Name"}
     [xml]$report=Get-Content $reports[0].FullName -Raw
