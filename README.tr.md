@@ -4,7 +4,7 @@
 
 Yeni kullanım rehberi: [Açık ve sınırlı işlemler](docs/functional-operations.tr.md).
 
-[![Sürüm](https://img.shields.io/badge/sürüm-0.8.0-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.8.0)
+[![Sürüm](https://img.shields.io/badge/sürüm-0.8.1-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.8.1)
 [![REST çizgisi](https://img.shields.io/badge/rust--java--rest-4.7.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.7.0)
 
 `rust-java-rest` ile birlikte çalışmak için hazırlanmış minimum yüzeyli Redis cache istemcisidir.
@@ -118,7 +118,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.8.0</version>
+  <version>0.8.1</version>
 </dependency>
 ```
 
@@ -133,7 +133,7 @@ Yükleyici, işletim sistemi ve işlemci mimarisine göre dosyayı seçer:
 | macOS ARM64 | `native/macos-arm64/librust_hyper-macos-arm64.dylib` |
 | Linux ARM64 | `native/linux-arm64/librust_hyper-linux-arm64.so` |
 
-`0.8.0` paketi dört platformun native dosyalarını ve checksum bilgilerini içerir.
+`0.8.1` paketi dört platformun native dosyalarını ve checksum bilgilerini içerir.
 ARM64 native build'leri CI üzerinde doğrulanır. Bu sürümün uygulama smoke testleri x64 kullanır.
 Özel build için REST reposundaki `scripts/sync-native-artifacts.ps1` aracını kullanın.
 Yükleyici, dosyayı açmadan önce Redis ABI `6`
@@ -171,7 +171,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.8.0"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.8.1"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -420,7 +420,7 @@ Processor'ı yalnız build path'e ekleyin:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.8.0</version>
+  <version>0.8.1</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -651,4 +651,4 @@ Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Prod
 | In-flight | Başlamış fakat henüz tamamlanmamış işlem |
 | Native handle | Body Rust belleğinde kalırken Java'nın taşıdığı küçük response kimliği |
 
-Sürüm ayrıntıları: [java-rust-cache 0.8.0](docs/RELEASE_NOTES_v0.8.0.tr.md).
+Sürüm ayrıntıları: [java-rust-cache 0.8.1](docs/RELEASE_NOTES_v0.8.1.tr.md).
