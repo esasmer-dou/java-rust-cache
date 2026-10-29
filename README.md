@@ -2,6 +2,12 @@
 
 [English](README.md) | [Turkish](README.tr.md)
 
+## Prepared ARM64 Patch: 0.9.1
+
+The published version is still 0.9.0. This checkout prepares cache 0.9.1 with
+REST/platform 4.8.1. It corrects ARM provenance without changing binary bytes,
+APIs or defaults. [Upgrade details](docs/RELEASE_NOTES_v0.9.1.md).
+
 ## Start With 0.9.0
 
 Opt-in versioned L1 reads and owned JSON responses reduce repeated Redis reads and avoid Java payload arrays on supported paths. Snapshot fencing, projection locks and reader/writer separation remain intact. Native extraction uses a bounded buffer under the configured home directory.

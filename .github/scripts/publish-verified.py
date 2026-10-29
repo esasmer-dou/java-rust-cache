@@ -77,6 +77,23 @@ def deploy_args(root, artifact, base, version):
     return args
 
 
+def verify_packaged_native_artifacts(root, checkout, manifest):
+    artifacts = [artifact for artifact in manifest["artifacts"] if artifact.get("id") == "java-rust-cache"]
+    if len(artifacts) != 1:
+        raise ValueError("Expected exactly one java-rust-cache runtime artifact")
+    verifier = checked(checkout, "src/main/java/com/reactor/rust/cache/codegen/PackagedNativeProvenanceVerifier.java")
+    contract = checked(checkout, ".github/native-provenance-contract.properties")
+    for artifact in artifacts:
+        runtime = checked(root, artifact["primary"])
+        if artifact["primary"] not in manifest["files"]:
+            raise ValueError("Runtime artifact without a recorded checksum")
+        downloads = artifact.get("downloads")
+        if not isinstance(downloads, list) or not downloads or not any(
+                isinstance(item, dict) and item.get("file") == artifact["primary"] for item in downloads):
+            raise ValueError("Runtime downloads must be nonempty and include the primary JAR")
+        subprocess.run(["java", str(verifier), str(runtime), str(contract)], cwd=checkout, check=True, timeout=120)
+
+
 def main():
     checkout = Path.cwd()
     repository, commit, version = (os.environ[k] for k in ("GITHUB_REPOSITORY", "GITHUB_SHA", "RELEASE_VERSION"))
@@ -91,6 +108,7 @@ def main():
                     raise ValueError("Unsafe archive path")
             archive.extractall(root)
         manifest = validate(root, checkout, repository, commit, version)
+        verify_packaged_native_artifacts(root, checkout, manifest)
         actor, token = os.environ["GITHUB_ACTOR"], os.environ["GITHUB_TOKEN"]
         base = f"https://maven.pkg.github.com/{repository}"
         proof = []

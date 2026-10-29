@@ -2,6 +2,12 @@
 
 [English](README.md) | [Turkish](README.tr.md)
 
+## Hazırlanan ARM64 Düzeltmesi: 0.9.1
+
+Yayımlanmış sürüm hâlâ 0.9.0'dır. Bu kaynak ağacı cache 0.9.1 ve REST/platform
+4.8.1 için hazırlanır. ARM manifestleri düzeltilir. Native dosyalar, API'ler ve
+varsayılanlar değişmez. [Geçiş ayrıntıları](docs/RELEASE_NOTES_v0.9.1.tr.md).
+
 ## 0.9.0 İle Başlayın
 
 İsteğe bağlı sürümlü L1 okuma ve sahipliği izlenen JSON yanıtları eklendi. Desteklenen yollarda Redis tekrarlarını ve Java payload dizilerini azaltır. Snapshot koruması, projection kilitleri ve okuma/yazma ayrımı korunur. Native dosya, belirlenen ana dizine sınırlı bir tamponla çıkarılır.
