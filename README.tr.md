@@ -6,27 +6,28 @@
 
 İsteğe bağlı sürümlü L1 okuma ve sahipliği izlenen JSON yanıtları eklendi. Desteklenen yollarda Redis tekrarlarını ve Java payload dizilerini azaltır. Snapshot koruması, projection kilitleri ve okuma/yazma ayrımı korunur. Native dosya, belirlenen ana dizine sınırlı bir tamponla çıkarılır.
 
-[Kullanım rehberi](docs/versioned-l1.md) · [Sürüm notları](docs/RELEASE_NOTES_v0.9.0.md)
+[Kullanım rehberi](docs/versioned-l1.tr.md) · [Sürüm notları](docs/RELEASE_NOTES_v0.9.0.tr.md)
 
 
 Yeni kullanım rehberi: [Açık ve sınırlı işlemler](docs/functional-operations.tr.md).
 
-Yayımlanmamış kaynak hazırlığı: [Native platformlar ve başlangıç uyumluluğu](docs/native-availability.tr.md).
-Korunan ARM temel dosyaları yeni isteğe bağlı özelliklerin güncel kaynak derlemesi değildir.
+Native paket uyumluluğu: [Native platformlar ve başlangıç uyumluluğu](docs/native-availability.tr.md).
+Dört platformun dosyaları aynı kaynak sürümünden derlenir. Çalışma testleri Linux
+x64 üzerinde yapılmıştır. Diğer platformlar için derleme ve kaynak doğrulaması vardır.
 
-Kaynak kod rehberi: [Opsiyonel versiyonlu L1](docs/versioned-l1.tr.md). Bu yeni
-API'ler yayımlanmış `0.9.0` paketinde yoktur. Mevcut okuyucular değişmez.
+Kullanım rehberi: [İsteğe bağlı sürümlü L1](docs/versioned-l1.tr.md). Bu API'ler
+`0.9.0` paketinde bulunur. Mevcut okuyucular değişmez.
 
-Kaynak kod REST entegrasyonu: [Herkese açık GET için native edge kuralları](https://github.com/esasmer-dou/rust-java-rest/blob/master/NATIVE_EDGE.tr.md).
+İsteğe bağlı REST entegrasyonu: [Herkese açık GET için native edge kuralları](https://github.com/esasmer-dou/rust-java-rest/blob/master/NATIVE_EDGE.tr.md).
 Küçük bir okuma istemcisi açıkça seçilir. Java guard'ları kendiliğinden atlanmaz.
 
-Kaynak kodda public kurallar şu tanımla kaydedilebilir:
+`0.9.0` ile public kurallar şu tanımla kaydedilebilir:
 `@EnableRustCache(publicEdgePolicies = PublicCatalogHandler.class,
 publicEdgeEnabledProperty = "sample.public.edge.enabled")`. Kurulum kodu derlemede
 üretilir. Reflection kullanılmaz. Property yalnız başlangıçta okunur; verilmezse
 `false` kabul edilir. Bu seçim yapılmayan mevcut annotation'lar önceki başlangıç
 kodunu üretir. [Ayrı public katalog örneğini](https://github.com/esasmer-dou/rest-sample-cache-reader/blob/master/docs/public-edge.tr.md)
-inceleyin. Bu annotation seçenekleri yayımlanmış `0.9.0` paketinde henüz yoktur.
+inceleyin. Bu annotation seçenekleri `0.9.0` paketinde bulunur.
 
 [![Sürüm](https://img.shields.io/badge/sürüm-0.9.0-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.9.0)
 [![REST çizgisi](https://img.shields.io/badge/rust--java--rest-4.8.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.8.0)
@@ -67,7 +68,7 @@ Varsayılan native binary çıkarma dizini:
 ${user.home}/.java-rust-cache/native/<binary-sha256-prefix>/
 ```
 
-Yayımlanmamış başlangıç davranışı: cache kendi paketlediği native dosyayı yüklerken kaynağı sabit
+`0.9.0` sürümünde cache kendi paketlediği native dosyayı yüklerken kaynağı sabit
 16 KiB tamponla, bu kullanıcı ana dizini veya yapılandırılmış çıkarma kökü altında geçici bir
 dosyaya akış halinde kopyalar. Dosya doğrulanmadan hash adlı dizine yerleştirilmez. Eşleşen mevcut
 dosya yeniden kullanılır, geçici dosyalar temizlenir. 64 MiB'ı aşan kaynaklar reddedilir.
@@ -241,7 +242,7 @@ kontrol eder. TTL, fencing ve birden fazla replica ile çalışma kuralı deği�
 Açık DB/Redis bağlantıları veya kilitleri olan writer'dan checkpoint almayın.
 Bu kaynakları ve yenileme işlerini restore sonrasında başlatın.
 
-Henüz yayımlanmayan kilit yenileme düzeni: kilit TTL'i en az 300 ms olan işler,
+`0.9.0` sürümünde kilit TTL'i en az 300 ms olan işler,
 aynı kilit yöneticisindeki ortak yenileme görevini kullanır. Kısa snapshot işi
 her çalışmada ayrı zamanlayıcı oluşturup iptal etmez. Daha kısa TTL'ler mevcut
 iş başına zamanlamayı kullanır. Uzun işin kilidi yenilenir. Yayın sırasında kilit
@@ -252,11 +253,11 @@ Ortak zamanlayıcı, yalnız kendi yenileme zamanı gelen kilidi yeniler. Kilit 
 alındıysa araya gereksiz Redis çağrısı girmez ve yayın bu çağrıyı beklemez.
 Uzun işlerde TTL yenilemesi ve fencing kontrolü korunur.
 
-Kaynak kodda isteğe bağlı native snapshot birleştirme desteği bulunur.
+`0.9.0` sürümünde isteğe bağlı native snapshot birleştirme desteği bulunur.
 Varsayılan olarak kapalıdır. Kendi yükünüzü ölçtükten sonra
 `reactor.cache.redis.snapshot-batch-enabled=true` veya
 `REACTOR_CACHE_REDIS_SNAPSHOT_BATCH_ENABLED=true` ile seçebilirsiniz.
-Bu seçenek deneysel kaynak desteğidir; önerilen production varsayılanı değildir.
+Bu seçenek açıkça etkinleştirilir; önerilen production varsayılanı değildir.
 `refreshSnapshotWithLock` ve üretilen projection materializer'ları, uygun native
 dosya varsa standalone/Sentinel üzerinde bu yolu kullanır. Küçük yenileme için
 kilit, token, veri, sürüm ve kilit bırakma ayrı ayrı gönderilmez. İki yazma çağrısı

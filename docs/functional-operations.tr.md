@@ -59,8 +59,8 @@ Redis yayını ayrı bir işlemdir. Mevcut fenced writer kilidini koruyun.
 
 ### Açık SWAR Sabitleri
 
-Burada anlatılan SWAR API'si kaynak kod deposuna eklenmiştir. Yeni yayımlanmış bir
-Maven paketi veya kabul edilmiş bir performans iyileştirmesi değildir.
+SWAR API'si `java-rust-cache:0.9.0` paketinde bulunur. Açıkça seçilir.
+Her iş yükü için veya ayrıca kabul edilmiş bir performans kazancı vaat etmez.
 
 `Utf8JsonWriter` SWAR'ı kendiliğinden kullanmaz; mevcut field/quote metotları
 değişmez. Ölçümle seçilmiş bir writer, `Utf8JsonBuffer.writePrebakedLong` çağrısını

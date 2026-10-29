@@ -12,15 +12,16 @@ Opt-in versioned L1 reads and owned JSON responses reduce repeated Redis reads a
 New usage guide: [Explicit, bounded operations](docs/functional-operations.md).
 
 Native package compatibility: [Native availability and startup compatibility](docs/native-availability.md).
-Preserved ARM base binaries are not current-source builds of the new optional features.
+All four packaged platforms use the coordinated source build. Runtime verification
+was performed on Linux x64; the other platforms have compile/provenance evidence.
 
-Source-checkout guide: [Opt-in versioned L1](docs/versioned-l1.md). These new APIs
+Usage guide: [Opt-in versioned L1](docs/versioned-l1.md). These APIs
 are opt-in in `0.9.0`; existing readers remain unchanged.
 
-Source-only REST integration: [Public GET native edge policies](https://github.com/esasmer-dou/rust-java-rest/blob/master/NATIVE_EDGE.md).
+Optional REST integration: [Public GET native edge policies](https://github.com/esasmer-dou/rust-java-rest/blob/master/NATIVE_EDGE.md).
 It requires an explicitly small read client and never bypasses Java guards implicitly.
 
-The source checkout can register public policies with
+With `0.9.0`, register public policies with
 `@EnableRustCache(publicEdgePolicies = PublicCatalogHandler.class,
 publicEdgeEnabledProperty = "sample.public.edge.enabled")`. Installation is generated,
 not reflected. The property is startup-only and false when unset. Existing annotations
@@ -68,7 +69,7 @@ By default, packaged native binaries are extracted under:
 ${user.home}/.java-rust-cache/native/<binary-sha256-prefix>/
 ```
 
-Unreleased startup behavior: when cache loads its own packaged binary, it streams the resource
+In `0.9.0`, when cache loads its own packaged binary, it streams the resource
 through a fixed 16 KiB buffer into a staging file under this home-based or configured extraction
 root. The file is verified before placement in the hash-named directory. A matching cached binary
 is reused, and staging files are cleaned up. Resources larger than 64 MiB are rejected.
@@ -232,7 +233,7 @@ TTL expiry, fencing and the multi-replica locking contract are unchanged.
 Do not checkpoint an active writer with live database/Redis connections or leases;
 start those resources and refresh jobs after restore.
 
-Source-only lease renewal: protected jobs with a lock TTL of at least 300 ms
+In `0.9.0`, protected jobs with a lock TTL of at least 300 ms
 share one renewal task per lock manager. A short snapshot no longer creates and
 cancels its own timer. Shorter leases keep their existing per-lock schedule.
 Long jobs still renew their lease; publication still checks ownership and the
@@ -243,11 +244,11 @@ The shared timer only renews a lease after that lease's own renewal deadline.
 A tick immediately after acquisition does not issue another Redis call or delay
 the snapshot commit. Long-running jobs retain TTL renewal and fenced publication.
 
-The source checkout includes an optional native snapshot-batch capability.
+Version `0.9.0` includes an optional native snapshot-batch capability.
 It is disabled by default. Select it with
 `reactor.cache.redis.snapshot-batch-enabled=true` or
 `REACTOR_CACHE_REDIS_SNAPSHOT_BATCH_ENABLED=true` only after testing your workload.
-This is an experimental source option, not the recommended production default.
+This is an opt-in option, not the recommended production default.
 `refreshSnapshotWithLock` and generated projection materializers use it when
 available on standalone/Sentinel. A small refresh uses two write calls instead
 of separate lock, fence, data, pointer and unlock calls. Final commit checks both
@@ -726,7 +727,7 @@ The default is `false`; keep it when an interval of rest **after completion** is
 part of your workload contract. Run-once mode is unaffected. TTL must still exceed
 the interval plus the longest expected job/outage and your safety margin.
 
-This source-only option controls start times, not execution latency. It does not
+This option controls start times, not execution latency. It does not
 guarantee a lower job p99 and is not a new production default.
 
 ## Glossary

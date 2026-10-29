@@ -57,8 +57,8 @@ Redis publication remains a separate operation. Keep the existing fenced writer 
 
 ### Explicit SWAR Literals
 
-The SWAR API described here is a source-checkout addition, not a newly released
-Maven package or an accepted performance improvement.
+The SWAR API is available in `java-rust-cache:0.9.0`. It is opt-in and is not
+a universal or separately accepted performance improvement.
 
 `Utf8JsonWriter` does not automatically use SWAR. Its ordinary field/quote methods
 remain unchanged. A measured writer can compose `Utf8JsonBuffer.writePrebakedLong`

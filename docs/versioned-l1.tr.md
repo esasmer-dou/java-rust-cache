@@ -2,8 +2,9 @@
 
 [English](versioned-l1.md) | [Turkish](versioned-l1.tr.md)
 
-Bu rehber çalışma ağacındaki yeni API'leri anlatır. Bu API'ler yayımlanmış `0.9.0`
-paketinde yoktur. Yalnız bu paketi kullanan uygulamada henüz etkinleştirmeyin.
+Bu rehber `java-rust-cache:0.9.0` paketindeki isteğe bağlı API'leri anlatır.
+REST entegrasyonu ve native dosyalar için eşleşen `rust-java-rest:4.8.0` kullanın.
+L1 açıkça seçilmedikçe kapalıdır. Her iş yükünde bellek kazancı sağlamaz.
 
 `L1VersionedJsonCacheReader` ayrı ve açıkça seçilen bir okuyucudur. Mevcut
 `RustCache.versionedJsonReader(...)`, `VersionedJsonCacheReader`, üretilmiş
