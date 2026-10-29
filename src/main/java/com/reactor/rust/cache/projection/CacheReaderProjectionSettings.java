@@ -24,6 +24,14 @@ public record CacheReaderProjectionSettings(String name, String namespace,
                 .toList();
     }
 
+    /** Explicit startup opt-in. Existing resolveAll never queries L1 properties or creates L1 wrappers. */
+    public static List<L1ProjectionSettings> resolveAllWithL1(
+            ProjectionPropertySource properties, String rootPrefix) {
+        return resolveAll(properties, rootPrefix).stream()
+                .map(base -> L1ProjectionSettings.resolve(properties, rootPrefix, base))
+                .toList();
+    }
+
     private static com.reactor.rust.cache.versioned.CacheFreshness freshness(ProjectionPropertySource source, String root, String projection) {
         String age = option(source, root, projection, "max-age-ms");
         String stale = option(source, root, projection, "serve-stale");

@@ -80,14 +80,15 @@ public final class ProjectionReaderProcessor extends AbstractProcessor {
             error(contract, "Projection reader interface has no annotated abstract methods");
             return;
         }
-        validate(methods);
+        boolean allowL1 = Boolean.parseBoolean(value(annotation, "allowL1"));
+        validate(methods, allowL1);
         try {
             JavaFileObject source = processingEnv.getFiler().createSourceFile(qualifiedName, contract);
             try (Writer writer = source.openWriter()) {
-                writeSource(writer, packageName, simpleName, contract, methods, rootPrefix);
+                writeSource(writer, packageName, simpleName, contract, methods, rootPrefix, allowL1);
             }
             if (Boolean.parseBoolean(value(annotation, "restBean"))) {
-                writeRestConfiguration(packageName, simpleName, contract, rootPrefix);
+                writeRestConfiguration(packageName, simpleName, contract, allowL1);
             }
         } catch (IOException failure) {
             error(contract, "Failed to generate projection reader: " + failure.getMessage());
@@ -134,7 +135,7 @@ public final class ProjectionReaderProcessor extends AbstractProcessor {
             String packageName,
             String generatedReader,
             TypeElement contract,
-            String rootPrefix) throws IOException {
+            boolean allowL1) throws IOException {
         String simpleName = contract.getSimpleName() + "__ReactorConfiguration";
         String qualifiedName = packageName.isEmpty() ? simpleName : packageName + "." + simpleName;
         JavaFileObject source = processingEnv.getFiler().createSourceFile(qualifiedName, contract);
@@ -144,14 +145,20 @@ public final class ProjectionReaderProcessor extends AbstractProcessor {
             }
             out.write("@com.reactor.rust.di.annotation.Configuration\n");
             out.write("public final class " + simpleName + " {\n");
+            if (allowL1) out.write("    private " + generatedReader + " reader;\n");
             out.write("    @com.reactor.rust.di.annotation.Bean\n");
             out.write("    public " + contract.getQualifiedName() + " "
                     + beanName(contract.getSimpleName().toString())
                     + "(com.reactor.rust.cache.core.RustCache cache) {\n");
-            out.write("        return " + generatedReader + ".create(cache, "
+            out.write("        " + (allowL1 ? "reader = " : "return ") + generatedReader + ".create(cache, "
                     + "com.reactor.rust.cache.config.CacheProperties.from("
                     + "com.reactor.rust.config.PropertiesLoader.getAll()));\n");
+            if (allowL1) out.write("        return reader;\n");
             out.write("    }\n");
+            if (allowL1) {
+                out.write("    @com.reactor.rust.di.annotation.PreDestroy\n");
+                out.write("    public void close() { if (reader != null) reader.close(); }\n");
+            }
             out.write("}\n");
         }
     }
@@ -162,24 +169,29 @@ public final class ProjectionReaderProcessor extends AbstractProcessor {
             String simpleName,
             TypeElement contract,
             List<ExecutableElement> methods,
-            String rootPrefix) throws IOException {
+            String rootPrefix,
+            boolean allowL1) throws IOException {
+        String registry = "com.reactor.rust.cache.projection."
+                + (allowL1 ? "ConfiguredJsonProjectionReaders" : "VersionedJsonProjectionReaders");
         if (!packageName.isEmpty()) out.write("package " + packageName + ";\n\n");
         out.write("public final class " + simpleName + " implements "
-                + contract.getQualifiedName() + " {\n");
+                + contract.getQualifiedName() + (allowL1 ? ", java.lang.AutoCloseable" : "") + " {\n");
         out.write("    private final com.reactor.rust.cache.core.RustCache cache;\n");
+        if (allowL1) out.write("    private final " + registry + " readers;\n");
         for (int index = 0; index < methods.size(); index++) {
             ExecutableElement method = methods.get(index);
             if (annotation(method, ID_READ) != null || annotation(method, META_READ) != null) {
-                out.write("    private final com.reactor.rust.cache.projection.VersionedJsonProjectionReaders.BoundProjection bound"
+                out.write("    private final " + registry + ".BoundProjection bound"
                         + index + ";\n");
             } else if (annotation(method, INDEX_READ) != null) {
-                out.write("    private final com.reactor.rust.cache.projection.VersionedJsonProjectionReaders.BoundIndex bound"
+                out.write("    private final " + registry + ".BoundIndex bound"
                         + index + ";\n");
             }
         }
         out.write("\n    private " + simpleName + "(com.reactor.rust.cache.core.RustCache cache, "
-                + "com.reactor.rust.cache.projection.VersionedJsonProjectionReaders readers) {\n");
+                + registry + " readers) {\n");
         out.write("        this.cache = cache;\n");
+        if (allowL1) out.write("        this.readers = readers;\n");
         for (int index = 0; index < methods.size(); index++) {
             ExecutableElement method = methods.get(index);
             var id = annotation(method, ID_READ);
@@ -198,25 +210,30 @@ public final class ProjectionReaderProcessor extends AbstractProcessor {
             }
         }
         out.write("    }\n\n");
-        out.write("    public static " + contract.getQualifiedName() + " create("
+        out.write("    public static " + (allowL1 ? simpleName : contract.getQualifiedName()) + " create("
                 + "com.reactor.rust.cache.core.RustCache cache, "
                 + "com.reactor.rust.cache.config.CacheProperties properties) {\n");
         out.write("        var settings = com.reactor.rust.cache.projection.CacheReaderProjectionSettings"
-                + ".resolveAll(properties, \"" + escape(rootPrefix) + "\");\n");
+                + (allowL1 ? ".resolveAllWithL1" : ".resolveAll") + "(properties, \"" + escape(rootPrefix) + "\");\n");
         out.write("        long versionCacheMillis = properties.getLong(\""
                 + escape(rootPrefix) + ".version-cache-ms\");\n");
-        out.write("        var readers = com.reactor.rust.cache.projection.VersionedJsonProjectionReaders"
+        out.write("        var readers = " + registry
                 + ".create(cache, settings, versionCacheMillis);\n");
+        if (allowL1) out.write("        try {\n");
         out.write("        return new " + simpleName + "(cache, readers);\n");
+        if (allowL1) out.write("        } catch (RuntimeException | Error failure) { readers.close(); throw failure; }\n");
         out.write("    }\n\n");
+        if (allowL1) out.write("    @Override public void close() { readers.close(); }\n\n");
         for (int index = 0; index < methods.size(); index++) {
-            writeMethod(out, methods.get(index), index);
+            writeMethod(out, methods.get(index), index, allowL1);
         }
         out.write("}\n");
     }
 
-    private void writeMethod(Writer out, ExecutableElement method, int index) throws IOException {
+    private void writeMethod(Writer out, ExecutableElement method, int index, boolean allowL1) throws IOException {
         String returnType = method.getReturnType().toString();
+        boolean snapshot = returnType.equals("com.reactor.rust.cache.api.CacheReadSnapshot");
+        boolean backendValue = returnType.equals("com.reactor.rust.cache.api.CacheReadValue");
         String name = method.getSimpleName().toString();
         out.write("    @Override\n    public " + returnType + " " + name + "(");
         for (int parameter = 0; parameter < method.getParameters().size(); parameter++) {
@@ -226,12 +243,12 @@ public final class ProjectionReaderProcessor extends AbstractProcessor {
         }
         out.write(") {\n");
         if (annotation(method, ID_READ) != null) {
-            out.write("        return bound" + index + ".getById("
+            out.write("        return bound" + index + (backendValue ? ".readById(" : snapshot ? ".snapshotById(" : ".getById(")
                     + method.getParameters().get(0).getSimpleName() + ");\n");
         } else if (annotation(method, META_READ) != null) {
-            out.write("        return bound" + index + ".getMeta();\n");
+            out.write("        return bound" + index + (backendValue ? ".readMeta();\n" : snapshot ? ".snapshotMeta();\n" : ".getMeta();\n"));
         } else if (annotation(method, METRICS_READ) != null) {
-            out.write("        return cache.metricsJson();\n");
+            out.write("        return " + (allowL1 ? "readers.metricsJson(cache)" : "cache.metricsJson()") + ";\n");
         } else {
             var indexed = annotation(method, INDEX_READ);
             String parameter = method.getParameters().get(0).getSimpleName().toString();
@@ -244,12 +261,12 @@ public final class ProjectionReaderProcessor extends AbstractProcessor {
                 out.write("        if (normalizedKey == null || normalizedKey.isBlank()) "
                         + "normalizedKey = \"" + escape(defaultValue) + "\";\n");
             }
-            out.write("        return bound" + index + ".get(normalizedKey);\n");
+            out.write("        return bound" + index + (backendValue ? ".read(normalizedKey);\n" : snapshot ? ".snapshot(normalizedKey);\n" : ".get(normalizedKey);\n"));
         }
         out.write("    }\n\n");
     }
 
-    private void validate(List<ExecutableElement> methods) {
+    private void validate(List<ExecutableElement> methods, boolean allowL1) {
         for (ExecutableElement method : methods) {
             int annotations = (annotation(method, ID_READ) != null ? 1 : 0)
                     + (annotation(method, INDEX_READ) != null ? 1 : 0)
@@ -274,8 +291,10 @@ public final class ProjectionReaderProcessor extends AbstractProcessor {
                 error(method, "Metadata and metrics reader methods must not declare parameters");
             }
             if (!method.getReturnType().toString().equals("com.reactor.rust.cache.api.CacheReadResult")
+                    && !(allowL1 && method.getReturnType().toString().equals("com.reactor.rust.cache.api.CacheReadSnapshot"))
+                    && !(allowL1 && method.getReturnType().toString().equals("com.reactor.rust.cache.api.CacheReadValue"))
                     && annotation(method, METRICS_READ) == null) {
-                error(method, "Projection reader methods must return CacheReadResult");
+                error(method, "Projection reader methods must return CacheReadResult; allowL1=true also supports CacheReadSnapshot or backend-selected CacheReadValue");
             }
             if (annotation(method, METRICS_READ) != null
                     && !method.getReturnType().toString().equals(String.class.getName())) {

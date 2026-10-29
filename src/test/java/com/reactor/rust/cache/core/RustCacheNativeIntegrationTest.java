@@ -229,10 +229,20 @@ class RustCacheNativeIntegrationTest {
         List<String> command = new ArrayList<>(args.length + 1);
         command.add("docker");
         command.addAll(List.of(args));
-        Process process = new ProcessBuilder(command).inheritIO().start();
-        int exit = process.waitFor();
-        if (exit != 0) {
-            throw new AssertionError("docker command failed with exit " + exit + ": " + command);
+        // Native child stdout is Surefire's protocol pipe, not Java's captured System.out.
+        Process process = new ProcessBuilder(command)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.INHERIT).start();
+        try {
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                throw new AssertionError("docker command timed out: " + command);
+            }
+            int exit = process.exitValue();
+            if (exit != 0) {
+                throw new AssertionError("docker command failed with exit " + exit + ": " + command);
+            }
+        } finally {
+            if (process.isAlive()) process.destroyForcibly();
         }
     }
 

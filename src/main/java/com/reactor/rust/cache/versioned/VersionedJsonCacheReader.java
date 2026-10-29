@@ -99,13 +99,9 @@ public final class VersionedJsonCacheReader {
                 cache.getString(VersionedJsonKeys.currentKey(namespace))
         );
         if (value == null) return null;
-        long freshUntil = 0;
-        if (freshness.maxAgeMillis() > 0 && !freshness.stale(value, now)) {
-            long created = Long.parseLong(value.substring(0, value.indexOf('-')));
-            freshUntil = created > Long.MAX_VALUE - freshness.maxAgeMillis()
-                    ? Long.MAX_VALUE : created + freshness.maxAgeMillis();
-        }
-        version = new Version(value, now + versionCacheMillis, freshUntil);
+        long freshUntil = freshness.freshUntilMillis(value, now);
+        long until = now > Long.MAX_VALUE - versionCacheMillis ? Long.MAX_VALUE : now + versionCacheMillis;
+        version = new Version(value, until, freshUntil);
         if (versionCacheMillis > 0) cached = version;
         return version;
     }

@@ -1,0 +1,2 @@
+# Normalize this manifest in Git without rewriting current worktree bytes.
+/src/main/resources/native/native-provenance.properties text eol=lf

@@ -57,6 +57,67 @@ Bu bağımlılığı DB kullanan uygulamada açıkça ekleyin. Reader'a otomatik
 Outbox bildirimi ile DB değişikliği aynı transaction içinde yazılır.
 Redis yayını ayrı bir işlemdir. Mevcut fenced writer kilidini koruyun.
 
+### Açık SWAR Sabitleri
+
+Burada anlatılan SWAR API'si kaynak kod deposuna eklenmiştir. Yeni yayımlanmış bir
+Maven paketi veya kabul edilmiş bir performans iyileştirmesi değildir.
+
+`Utf8JsonWriter` SWAR'ı kendiliğinden kullanmaz; mevcut field/quote metotları
+değişmez. Ölçümle seçilmiş bir writer, `Utf8JsonBuffer.writePrebakedLong` çağrısını
+mevcut kaçışlama metotlarıyla birleştirebilir. Bu API yalnız **güvenilir, önceden
+kaçışlanmış sabit byte'lar** içindir:
+
+```java
+var out = json(128).writePrebakedLong(0x3a22656d616e227bL); // {"name":
+quote(out, name).append('}');
+return utf8(out);
+```
+
+Her word, platform byte order veya hizasından bağımsız olarak düşük byte önce
+olacak şekilde sekiz byte yazar. Bekleyen eşleşmemiş high surrogate için gereken
+replacement byte dahil sınır, word'ün hiçbir parçası yazılmadan denetlenir.
+Taşmada `IllegalStateException` oluşur; yarım belgeyi yayımlamayın. Dinamik
+değerleri denetimsiz paketlemeyin, yine `quote` kullanın. Null string değerler
+mevcut boş-string sözleşmesini korur. Buffer büyümesi ve son byte dizisi kopyası
+devam eder; sıfır tahsisat veya her yerde hızlanma iddia edilmez.
+
+Bu cache API'si little-endian byte-array VarHandle kullanmaya devam eder. Değişmez,
+REST'in `JsonBufferWriter` sınıfından ayrıdır ve otomatik üreteç bağlantısı yoktur.
+REST üreteci, isteğe bağlı SWAR yolunda tam `"field":` önekinin UTF-8 byte uzunluğuna
+göre seçim yapar:
+
+- **8..16 byte:** tek `writePrebakedLiteral(first, last, len)` çağrısı üretilir;
+  bu önek için kalan byte'lar tabloda tutulmaz. İlk ve son sekiz byte'lık word,
+  düşük byte önce olacak şekilde paketlenir; örtüşen byte'lar aynı olmalıdır.
+  Yeterli yer varsa önekin başına ve `start + len - 8` konumuna mutlak
+  `ByteBuffer.putLong` yazımları yapılır; bu yazımlar örtüşebilir. Uzunluk 8 ise
+  yalnız bir kez yazılır ve `last` kullanılmaz.
+- **16 byte'tan uzun:** mevcut tam-word ve 0..7 byte'lık kalan parça tablosu yolları korunur.
+- **8 byte'tan kısa:** mevcut byte tablosu yolu korunur.
+
+REST, big-endian çıktıda yazılan word'ün sırasını `Long.reverseBytes` ile ters çevirir.
+VarHandle ByteBuffer view kullanmaz; position, limit ve byte order değerlerini korur.
+Birleşik metot, cursor ve gerekli-byte sayacının tam sayı toplamalarını herhangi bir
+yazım veya sayaç güncellemesinden önce denetler ve 8..16 dışındaki uzunlukları reddeder.
+Yer azsa buffer limitine kadar byte byte yazan yolu kullanır, ancak tam gerekli
+uzunluğu sayar. Bunlar REST davranışlarıdır; yukarıdaki sınırlı cache byte-array
+API'sini değiştirmez.
+
+REST'in derleme özelliği `reactor.json.swar` varsayılan olarak kapalıdır. Açmak için
+işaretlenmiş DTO artifact'ini `-Dreactor.json.swar=true` ile temizden derleyin.
+Derleyici ayarları REST `docs/native-views.tr.md` içindedir.
+
+Bu seçenek burada anlatılan API'yi, mevcut cache writer'larını veya hazır JSON
+cache okumalarını değiştirmez. REST'in ayrı generated-literal endpoint'i,
+EmaTech'teki dört çiftli RPS/p99/+3 MiB karşılaştırmasını geçti. Bu sonuç burada
+anlatılan byte-array API'si için cache okuma hızlanması veya bellek azalması
+kanıtı değildir. Dar cache testlerini, eşleşen bağımlılıklar kurulduktan sonra
+workspace kökünden çalıştırın:
+
+```sh
+mvn -B -ntp -f java-rust-cache/pom.xml -Dtest=SwarJsonWriteTest,Utf8JsonWriterTest,Utf8JsonBufferResetTest test
+```
+
 ## Native Socket Buffer Kullanımı
 
 Senkron Redis bağlantısı, küçük protokol parçalarını birleştirerek gönderir.

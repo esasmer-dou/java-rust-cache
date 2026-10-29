@@ -6,7 +6,7 @@
 
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.8.1</version>
+  <version>0.9.0</version>
   <packaging>jar</packaging>
 
   <name>java-rust-cache</name>
@@ -17,7 +17,7 @@
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <hikaricp.version>5.1.0</hikaricp.version>
-    <rust-java-rest.version>4.7.1</rust-java-rest.version>
+    <rust-java-rest.version>4.8.0</rust-java-rest.version>
     <junit.version>5.11.4</junit.version>
   </properties>
 
@@ -44,6 +44,13 @@
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
       <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.reactor</groupId>
+      <artifactId>rust-java-rest</artifactId>
+      <version>${rust-java-rest.version}</version>
+      <classifier>codegen</classifier>
       <scope>test</scope>
     </dependency>
   </dependencies>

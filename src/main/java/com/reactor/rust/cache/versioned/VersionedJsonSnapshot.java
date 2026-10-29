@@ -60,8 +60,24 @@ public final class VersionedJsonSnapshot {
     }
 
     int publish() {
+        return publish(null);
+    }
+
+    int publish(com.reactor.rust.cache.lock.CacheLock lock) {
         if (published) {
             throw new RedisCacheException("snapshot already published");
+        }
+        if (lock != null && lock.snapshotFence() > 0) {
+            // Retain at most one ordinary batch; larger snapshots still flush incrementally.
+            long bytes = 0;
+            for (byte[] value : values) bytes += value.length;
+            if (bytes > 1024 * 1024) flush();
+            int tail = lock.commitSnapshot(VersionedJsonKeys.currentKey(namespace), fencingToken,
+                    version, dataTtlMillis, keys.toArray(String[]::new), values.toArray(byte[][]::new));
+            keys.clear();
+            values.clear();
+            published = true;
+            return written + tail;
         }
         flush();
         boolean pointerUpdated = cache.publishFencedVersion(

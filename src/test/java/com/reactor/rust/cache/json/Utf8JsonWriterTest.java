@@ -6,6 +6,36 @@ import java.util.Random;
 import static org.junit.jupiter.api.Assertions.*;
 
 class Utf8JsonWriterTest {
+    static final class Prepared extends Utf8JsonWriter {
+        final JsonField text;
+        final JsonField number = key("n");
+        Prepared(String name) { text = key(name); }
+        byte[] write(String value, long n) {
+            var out = json(16); text.string(out, value).append(','); number.number(out, n); return utf8(out);
+        }
+    }
+
+    @Test void preparedFieldsKeepExactUtf8ForChangingValuesAndDoNotRetainDocuments() {
+        var prepared = new Prepared("value");
+        var expected = new Old();
+        for (String value : new String[]{null, "", "İıÇçĞğÖöÜü", "🚀", "\ud800x\udc00", "\u0000\t\r\n\"\\"})
+            for (long n : new long[]{0, 1, -1, Long.MIN_VALUE, Long.MAX_VALUE})
+                assertArrayEquals(expected.write(value, n), prepared.write(value, n));
+        byte[] first = prepared.write("unchanged", 42);
+        prepared.write("other", 43);
+        assertArrayEquals(expected.write("unchanged", 42), first);
+    }
+
+    @Test void preparedNamesAreEscapedOnceAndNeverBypassTheOutputByteLimit() {
+        var prepared = new Prepared("İ\"\\\n🚀");
+        var plain = new Utf8JsonWriter() {
+            byte[] write() { var out = json(16); stringField(out, "İ\"\\\n🚀", "body").append(','); field(out, "n", 4); return utf8(out); }
+        };
+        assertArrayEquals(plain.write(), prepared.write("body", 4));
+        var bounded = new Utf8JsonBuffer(0, 1);
+        assertThrows(IllegalStateException.class, () -> prepared.text.string(bounded, "body"));
+        assertEquals(0, bounded.toByteArray().length);
+    }
     static class Old extends JsonWriter {
         byte[] write(String value, long n) { var out=json(16); stringField(out,"value",value).append(','); field(out,"n",n); return utf8(out); }
     }

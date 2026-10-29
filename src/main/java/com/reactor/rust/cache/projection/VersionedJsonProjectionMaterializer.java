@@ -20,9 +20,11 @@ public final class VersionedJsonProjectionMaterializer {
     private final RustCache cache;
     private final Map<String, ProjectionTarget> targets;
     private final Map<String, ProjectionWriter> writers;
+    private final boolean snapshotBatch;
 
     private VersionedJsonProjectionMaterializer(Builder builder) {
         this.cache = builder.cache;
+        this.snapshotBatch = cache.supportsSnapshotBatch();
         this.writers = Map.copyOf(builder.writers);
         Map<String, ProjectionTarget> targets = new LinkedHashMap<>();
         for (CacheWriterProjectionSettings setting : builder.settings) {
@@ -52,10 +54,19 @@ public final class VersionedJsonProjectionMaterializer {
         }
         ProjectionWriter writer = writers.get(projection);
         SnapshotResult[] result = new SnapshotResult[1];
-        boolean published = cache.locks().runOnceChecked(lockName, lockTtlMillis, lock -> {
-            result[0] = writer.write(target);
-            lock.ensureValid();
-        });
+        boolean published;
+        if (snapshotBatch) {
+            published = cache.locks().runSnapshotChecked(lockName, lockTtlMillis, target.writer().fenceKey(), lock -> {
+                ProjectionTarget scoped = new ProjectionTarget(target.name(), target.namespace(), target.ttlMillis(),
+                        target.writer().withLease(lock));
+                result[0] = writer.write(scoped);
+            });
+        } else {
+            published = cache.locks().runOnceChecked(lockName, lockTtlMillis, lock -> {
+                result[0] = writer.write(target);
+                lock.ensureValid();
+            });
+        }
         if (!published) {
             return ProjectionRefreshResult.skipped(projection);
         }

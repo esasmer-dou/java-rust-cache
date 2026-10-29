@@ -1,6 +1,10 @@
 package com.reactor.rust.cache.http;
 
 import com.reactor.rust.cache.api.CacheReadResult;
+import com.reactor.rust.cache.api.CacheReadSnapshot;
+import com.reactor.rust.cache.api.CacheReadValue;
+import com.reactor.rust.json.ManagedJsonBodyProducer;
+import java.nio.ByteBuffer;
 import com.reactor.rust.http.JsonResponses;
 import com.reactor.rust.http.RawResponse;
 import com.reactor.rust.http.ResponseEntity;
@@ -18,6 +22,65 @@ public final class CacheResponses {
     private static final String DEFAULT_MISS_MESSAGE = "Redis snapshot is not available yet";
 
     private CacheResponses() {}
+
+    /** Remote results use the raw-body path; borrowed L1 results retain managed ownership. */
+    public static ResponseEntity<?> valueJson(CacheReadValue value, String missCode, String notReadyCode) {
+        Objects.requireNonNull(value, "value");
+        if (value instanceof CacheReadResult result) return json(result, missCode, notReadyCode);
+        return ownedJson((CacheReadSnapshot) value, missCode, notReadyCode);
+    }
+
+    public static ResponseEntity<?> valueProblem(CacheReadValue value) {
+        Objects.requireNonNull(value, "value");
+        if (value instanceof CacheReadResult result) return problem(result);
+        return ownedProblem((CacheReadSnapshot) value);
+    }
+
+    /** Transfers ownership to the response writer; no intermediate body array on L1 hits. */
+    public static ResponseEntity<?> ownedJson(CacheReadSnapshot snapshot, String missCode, String notReadyCode) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        try {
+            CacheResponsePolicy.requireText(missCode, "missCode");
+            CacheResponsePolicy.requireText(notReadyCode, "notReadyCode");
+            if (snapshot.hit()) return ResponseEntity.ok(new SnapshotProducer(snapshot));
+            snapshot.close();
+            return json(emptyResult(snapshot), missCode, notReadyCode);
+        } catch (RuntimeException | Error failure) { snapshot.close(); throw failure; }
+    }
+
+    public static ResponseEntity<?> ownedProblem(CacheReadSnapshot snapshot) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        try {
+            if (snapshot.hit()) {
+                ResponseEntity<?> response = ResponseEntity.ok(new SnapshotProducer(snapshot));
+                return snapshot.status() == CacheReadResult.Status.STALE_HIT ? response.header("X-Cache-Stale", "true") : response;
+            }
+            snapshot.close();
+            return problem(emptyResult(snapshot));
+        } catch (RuntimeException | Error failure) { snapshot.close(); throw failure; }
+    }
+
+    private static CacheReadResult emptyResult(CacheReadSnapshot snapshot) {
+        return switch (snapshot.status()) {
+            case MISS -> CacheReadResult.miss();
+            case STALE -> CacheReadResult.stale();
+            case CACHE_NOT_READY -> CacheReadResult.cacheNotReady();
+            default -> throw new IllegalArgumentException("Expected a non-hit snapshot");
+        };
+    }
+
+    private record SnapshotProducer(CacheReadSnapshot snapshot) implements ManagedJsonBodyProducer {
+        public int write(ByteBuffer out, int offset) {
+            try {
+                // Header-only overflow must retain even an empty body's ownership for retry.
+                if (offset > out.capacity()) return -snapshot.length();
+                int written = snapshot.writeTo(out, offset);
+                if (written >= 0) snapshot.close();
+                return written;
+            } catch (RuntimeException | Error failure) { snapshot.close(); throw failure; }
+        }
+        public void close() { snapshot.close(); }
+    }
 
     public static ResponseEntity<RawResponse> json(
             CacheReadResult result,

@@ -2,7 +2,7 @@ package com.reactor.rust.cache.api;
 
 import java.util.Arrays;
 
-public final class CacheReadResult {
+public final class CacheReadResult implements CacheReadValue {
 
     public enum Status {
         HIT,

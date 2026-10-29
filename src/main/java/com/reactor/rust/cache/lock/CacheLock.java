@@ -14,6 +14,10 @@ public final class CacheLock implements AutoCloseable {
     private final Consumer<CacheLock> closeListener;
     private volatile boolean closed;
     private volatile boolean lost;
+    private long snapshotFence;
+    private boolean snapshotCommitted;
+    private long renewalTtlMillis;
+    private long nextRenewalNanos;
 
     CacheLock(RustCache cache, String key, String ownerToken, Consumer<CacheLock> closeListener) {
         this.cache = Objects.requireNonNull(cache, "cache");
@@ -22,7 +26,7 @@ public final class CacheLock implements AutoCloseable {
         this.closeListener = Objects.requireNonNull(closeListener, "closeListener");
     }
 
-    public boolean renew(long ttlMillis) {
+    public synchronized boolean renew(long ttlMillis) {
         if (closed) {
             return false;
         }
@@ -54,6 +58,49 @@ public final class CacheLock implements AutoCloseable {
 
     void markLost() {
         lost = true;
+    }
+
+    synchronized void scheduleRenewal(long ttlMillis) {
+        renewalTtlMillis = ttlMillis;
+        nextRenewalNanos = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(ttlMillis / 3);
+    }
+
+    synchronized boolean renewIfDue(long nowNanos) {
+        if (renewalTtlMillis == 0 || closed || lost || nowNanos - nextRenewalNanos < 0) return false;
+        try {
+            if (renew(renewalTtlMillis)) {
+                nextRenewalNanos = System.nanoTime()
+                        + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(renewalTtlMillis / 3);
+                return true;
+            }
+        } catch (RuntimeException error) {
+            markLost();
+        }
+        return false;
+    }
+
+    void snapshotFence(long fence) { snapshotFence = fence; }
+
+    public long snapshotFence() { return snapshotFence; }
+
+    boolean snapshotCommitted() { return snapshotCommitted; }
+
+    /** Serializes commit with renewal/close; a successful commit releases the remote lease atomically. */
+    public synchronized int commitSnapshot(String current, long fence, String version, long ttl,
+                                            String[] keys, byte[][] values) {
+        ensureValid();
+        if (snapshotFence <= 0 || snapshotFence != fence) {
+            throw new IllegalStateException("Snapshot lease does not own this fencing token");
+        }
+        int written = cache.commitSnapshot(key, ownerToken, current, fence, version, ttl, keys, values);
+        if (written <= 0) {
+            markLost();
+            throw new RedisCacheException("Snapshot commit rejected: expired lease or newer fenced writer");
+        }
+        snapshotCommitted = true;
+        closed = true;
+        closeListener.accept(this);
+        return written;
     }
 
     @Override

@@ -2,7 +2,7 @@ package com.reactor.rust.cache.json;
 
 import java.util.Arrays;
 
-/** Single-use bounded UTF-8 output. No retained ThreadLocal or full UTF-16 JSON copy. */
+/** Explicitly owned bounded UTF-8 output. No retained ThreadLocal or full UTF-16 JSON copy. */
 public final class Utf8JsonBuffer {
     private byte[] bytes;
     private int size;
@@ -20,7 +20,20 @@ public final class Utf8JsonBuffer {
         return appendRange(value, 0, value.length());
     }
     Utf8JsonBuffer appendRange(String value, int start, int end) {
-        for (int i = start; i < end; i++) append(value.charAt(i));
+        int i = start;
+        while (i < end) {
+            if (pendingHigh != 0 || value.charAt(i) >= 128) {
+                append(value.charAt(i++));
+                continue;
+            }
+            int ascii = i++;
+            while (i < end && value.charAt(i) < 128) i++;
+            int length = i - ascii;
+            ensure(length);
+            int offset = size;
+            for (int n = 0; n < length; n++) bytes[offset + n] = (byte) value.charAt(ascii + n);
+            size += length;
+        }
         return this;
     }
     public Utf8JsonBuffer append(char ch) {
@@ -65,9 +78,56 @@ public final class Utf8JsonBuffer {
         return this;
     }
     public Utf8JsonBuffer append(boolean value) { return append(value ? "true" : "false"); }
+
+    // Only the writer's immutable, already escaped field prefixes use this path.
+    Utf8JsonBuffer writeFieldPrefix(byte[] prefix) {
+        int replacement = pendingHigh == 0 ? 0 : 1;
+        ensure(prefix.length + replacement);
+        if (replacement != 0) { bytes[size++] = '?'; pendingHigh = 0; }
+        System.arraycopy(prefix, 0, bytes, size, prefix.length);
+        size += prefix.length;
+        return this;
+    }
+
+    /**
+     * Writes eight already encoded bytes, least-significant byte first. Intended for
+     * generated, escaped JSON literals, not unchecked application strings.
+     */
+    public Utf8JsonBuffer writePrebakedLong(long littleEndianWord) {
+        int replacement = pendingHigh == 0 ? 0 : 1;
+        ensure(Long.BYTES + replacement);
+        if (replacement != 0) {
+            bytes[size++] = '?';
+            pendingHigh = 0;
+        }
+        PrebakedWords.LITTLE_ENDIAN.set(bytes, size, littleEndianWord);
+        size += Long.BYTES;
+        return this;
+    }
+
+    // Initialized only by the explicit bulk-write API, never by the legacy path.
+    private static final class PrebakedWords {
+        static final java.lang.invoke.VarHandle LITTLE_ENDIAN =
+                java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
+                        long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
+    }
+
     public byte[] toByteArray() {
         if (pendingHigh != 0) { pendingHigh = 0; write('?'); }
         return Arrays.copyOf(bytes, size);
+    }
+
+    /**
+     * Starts a new document and drops an oversized scratch array. The caller owns
+     * this buffer exclusively; returned byte arrays from previous documents stay independent.
+     */
+    public Utf8JsonBuffer reset(int maxRetainedCapacity) {
+        if (maxRetainedCapacity < 1 || maxRetainedCapacity > limit)
+            throw new IllegalArgumentException("maxRetainedCapacity must be 1..maxBytes");
+        if (bytes.length > maxRetainedCapacity) bytes = new byte[maxRetainedCapacity];
+        size = 0;
+        pendingHigh = 0;
+        return this;
     }
     private void write(int value) { ensure(1); bytes[size++] = (byte) value; }
     private void ensure(int count) {

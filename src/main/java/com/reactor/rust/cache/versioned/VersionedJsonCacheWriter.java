@@ -11,6 +11,7 @@ public final class VersionedJsonCacheWriter {
     private final RustCache cache;
     private final String namespace;
     private final int batchSize;
+    private CacheLock snapshotLease;
 
     public static VersionedJsonCacheWriter create(RustCache cache, String namespace) {
         return create(cache, namespace, VersionedJsonKeys.DEFAULT_BATCH_SIZE);
@@ -29,6 +30,14 @@ public final class VersionedJsonCacheWriter {
         this.batchSize = VersionedJsonKeys.requireBatchSize(batchSize);
     }
 
+    public String fenceKey() { return VersionedJsonKeys.fenceKey(namespace); }
+
+    public VersionedJsonCacheWriter withLease(CacheLock lease) {
+        VersionedJsonCacheWriter scoped = new VersionedJsonCacheWriter(cache, namespace, batchSize);
+        scoped.snapshotLease = Objects.requireNonNull(lease, "lease");
+        return scoped;
+    }
+
     public SnapshotResult refreshSnapshotWithLock(
             String lockName,
             long lockTtlMillis,
@@ -36,15 +45,16 @@ public final class VersionedJsonCacheWriter {
             SnapshotCallback callback) {
         Objects.requireNonNull(callback, "callback");
         SnapshotResult[] result = new SnapshotResult[1];
-        boolean ran = cache.locks().runOnceChecked(
+        boolean ran = cache.locks().runSnapshotChecked(
                 lockName,
                 lockTtlMillis,
+                fenceKey(),
                 lock -> result[0] = refreshSnapshot(dataTtlMillis, callback, lock, lockTtlMillis));
         return ran ? result[0] : SnapshotResult.skippedResult();
     }
 
     public SnapshotResult refreshSnapshot(long dataTtlMillis, SnapshotCallback callback) throws Exception {
-        return refreshSnapshot(dataTtlMillis, callback, null, 0);
+        return refreshSnapshot(dataTtlMillis, callback, snapshotLease, 0);
     }
 
     private SnapshotResult refreshSnapshot(
@@ -56,7 +66,8 @@ public final class VersionedJsonCacheWriter {
         if (dataTtlMillis <= 0) {
             throw new IllegalArgumentException("dataTtlMillis must be positive");
         }
-        long fencingToken = cache.increment(VersionedJsonKeys.fenceKey(namespace));
+        long fencingToken = lock != null && lock.snapshotFence() > 0
+                ? lock.snapshotFence() : cache.increment(VersionedJsonKeys.fenceKey(namespace));
         if (fencingToken <= 0) {
             throw new IllegalStateException("Redis returned an invalid snapshot fencing token");
         }
@@ -70,14 +81,15 @@ public final class VersionedJsonCacheWriter {
                 batchSize
         );
         callback.write(snapshot);
-        if (lock != null) {
+        if (lock != null && lock.snapshotFence() == 0 && lockTtlMillis > 0) {
             lock.ensureValid();
             if (!lock.renew(lockTtlMillis)) {
                 throw new IllegalStateException("Redis lock lease could not be renewed before publishing snapshot");
             }
             lock.ensureValid();
         }
-        int written = snapshot.publish();
+        if (lock != null) lock.ensureValid();
+        int written = snapshot.publish(lock);
         return SnapshotResult.publishedResult(version, written);
     }
 

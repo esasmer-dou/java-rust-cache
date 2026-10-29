@@ -14,4 +14,7 @@ public @interface GenerateProjectionReader {
 
     /** Registers the generated reader as a REST DI bean at build time. */
     boolean restBean() default false;
+
+    /** Allows explicit per-projection L1 settings; absent/zero max-entries still selects Redis-only. */
+    boolean allowL1() default false;
 }

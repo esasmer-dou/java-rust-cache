@@ -27,6 +27,7 @@ public final class ProjectionWriterApplication {
         return builder
                 .settings(CacheWriterProjectionSettings.resolveAll(properties, prefix))
                 .schedulerThreads(properties.getInt(prefix + ".scheduler-threads"))
+                .phaseAnchored(properties.getBoolean(prefix + ".phase-anchored", false))
                 .schedulerThreadStackBytes(properties.getLong(
                         prefix + ".scheduler-thread-stack-bytes", 256L * 1024L))
                 .firstRunTimeoutMillis(properties.getLong(prefix + ".first-run-timeout-ms", 60_000L))
@@ -164,6 +165,7 @@ public final class ProjectionWriterApplication {
         private final List<AutoCloseable> resources = new ArrayList<>();
         private final List<Module> modules = new ArrayList<>();
         private boolean runOnce;
+        private boolean phaseAnchored;
         private int schedulerThreads = 1;
         private long schedulerThreadStackBytes = 256L * 1024L;
         private long firstRunTimeoutMillis = 60_000L;
@@ -205,6 +207,11 @@ public final class ProjectionWriterApplication {
 
         public Builder schedulerThreads(int schedulerThreads) {
             this.schedulerThreads = schedulerThreads;
+            return this;
+        }
+
+        public Builder phaseAnchored(boolean phaseAnchored) {
+            this.phaseAnchored = phaseAnchored;
             return this;
         }
 
@@ -264,6 +271,7 @@ public final class ProjectionWriterApplication {
                         .schedulerThreads(schedulerThreads)
                         .schedulerThreadStackBytes(schedulerThreadStackBytes)
                         .runOnce(runOnce)
+                        .phaseAnchored(phaseAnchored)
                         .firstRunTimeoutMillis(firstRunTimeoutMillis)
                         .threadNamePrefix(threadNamePrefix)
                         .observer(observer)

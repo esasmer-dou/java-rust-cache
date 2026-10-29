@@ -34,6 +34,9 @@ class NativeCacheProvenanceTest {
             assertThrows(RedisCacheException.class,()->NativeCacheProvenance.verifyPackagedBinary(loader,"windows-x64",binary,6));
             assertEquals(hash,NativeCacheProvenance.verifyPackagedBinary(
                     loader.getResource("native/windows-x64/rust_hyper-windows-x64.dll"),"windows-x64",binary,6));
+            var staged = java.nio.file.Files.write(directory.resolve("staged.bin"), binary);
+            assertEquals(hash,NativeCacheProvenance.verifyPackagedBinary(
+                    loader.getResource("native/windows-x64/rust_hyper-windows-x64.dll"),"windows-x64",staged,6));
         }
     }
 
@@ -63,6 +66,28 @@ class NativeCacheProvenanceTest {
                 RedisCacheException.class,
                 () -> NativeCacheProvenance.verifyPackagedBinary(loader, "windows-x64", binary, 6)
         );
+    }
+
+    @Test
+    void pathVerifierRejectsInvalidSchemaAbiHashAndMissingManifest() throws Exception {
+        byte[] binary = {1, 2, 3, 4};
+        var folder = java.nio.file.Files.createDirectories(directory.resolve("native/linux-x64"));
+        var file = java.nio.file.Files.write(folder.resolve("library.bin"), binary);
+        var resource = file.toUri().toURL();
+        var manifest = folder.getParent().resolve("native-provenance.properties");
+        String hash = NativeCacheProvenance.sha256(binary);
+        for (String invalid : new String[]{
+                "schema=1\nredis.abi=6\nlinux-x64.sha256=" + hash,
+                "schema=2\nredis.abi=5\nlinux-x64.sha256=" + hash,
+                "schema=2\nredis.abi=6\nlinux-x64.sha256=wrong",
+                "schema=2\nredis.abi=6\n"}) {
+            java.nio.file.Files.writeString(manifest, invalid);
+            assertThrows(RedisCacheException.class,
+                    () -> NativeCacheProvenance.verifyPackagedBinary(resource, "linux-x64", file, 6));
+        }
+        java.nio.file.Files.delete(manifest);
+        assertThrows(RedisCacheException.class,
+                () -> NativeCacheProvenance.verifyPackagedBinary(resource, "linux-x64", file, 6));
     }
 
     private static ClassLoader manifestLoader(String manifest) {

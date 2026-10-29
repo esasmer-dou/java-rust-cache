@@ -42,6 +42,15 @@ public final class VersionedJsonProjectionReaders {
         return new VersionedJsonProjectionReaders(readers);
     }
 
+    /** Explicit startup-only opt-in for one selected projection; create() and existing bound readers stay unchanged. */
+    public static com.reactor.rust.cache.versioned.L1VersionedJsonCacheReader createL1Reader(
+            RustCache cache, L1ProjectionSettings setting, long versionCacheMillis) {
+        Objects.requireNonNull(setting, "setting");
+        if (setting.options() == null) throw new IllegalArgumentException("Projection L1 is not explicitly configured");
+        return com.reactor.rust.cache.versioned.L1VersionedJsonCacheReader.create(cache, setting.base().namespace(),
+                versionCacheMillis, setting.base().freshness(), setting.options());
+    }
+
     public CacheReadResult getById(String projection, long id) {
         VersionedJsonCacheReader reader = readers.get(projection);
         return reader == null ? CacheReadResult.cacheNotReady() : reader.getById(id);

@@ -1,17 +1,41 @@
 # java-rust-cache
 
-[English](README.md) | [Türkçe](README.tr.md)
+[English](README.md) | [Turkish](README.tr.md)
+
+## Start With 0.9.0
+
+Opt-in versioned L1 reads and owned JSON responses reduce repeated Redis reads and avoid Java payload arrays on supported paths. Snapshot fencing, projection locks and reader/writer separation remain intact. Native extraction uses a bounded buffer under the configured home directory.
+
+[Usage guide](docs/versioned-l1.md) · [Release notes](docs/RELEASE_NOTES_v0.9.0.md)
+
 
 New usage guide: [Explicit, bounded operations](docs/functional-operations.md).
 
-[![Version](https://img.shields.io/badge/version-0.8.1-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.8.1)
-[![REST line](https://img.shields.io/badge/rust--java--rest-4.7.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.7.0)
+Native package compatibility: [Native availability and startup compatibility](docs/native-availability.md).
+Preserved ARM base binaries are not current-source builds of the new optional features.
+
+Source-checkout guide: [Opt-in versioned L1](docs/versioned-l1.md). These new APIs
+are opt-in in `0.9.0`; existing readers remain unchanged.
+
+Source-only REST integration: [Public GET native edge policies](https://github.com/esasmer-dou/rust-java-rest/blob/master/NATIVE_EDGE.md).
+It requires an explicitly small read client and never bypasses Java guards implicitly.
+
+The source checkout can register public policies with
+`@EnableRustCache(publicEdgePolicies = PublicCatalogHandler.class,
+publicEdgeEnabledProperty = "sample.public.edge.enabled")`. Installation is generated,
+not reflected. The property is startup-only and false when unset. Existing annotations
+without this opt-in generate the previous startup path. See the
+[separate public catalog sample](https://github.com/esasmer-dou/rest-sample-cache-reader/blob/master/docs/public-edge.md).
+These annotation options require version `0.9.0`.
+
+[![Version](https://img.shields.io/badge/version-0.9.0-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.9.0)
+[![REST line](https://img.shields.io/badge/rust--java--rest-4.8.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.8.0)
 
 Minimal Redis cache client for `rust-java-rest`.
 
 This project intentionally does **not** use Jedis, Lettuce, Spring Data Redis, Netty, runtime reflection, or generic object serialization. Java owns the business decision; Rust owns Redis TCP I/O and RESP encoding/decoding through the existing `rust_hyper` native library.
 
-The JAR includes matching Windows x64, Linux x64, Linux ARM64 and macOS ARM64 native binaries. If `rust-java-rest` is already on the classpath, `java-rust-cache` reuses its native bridge; otherwise it extracts and loads its own packaged `rust_hyper` binary. A manual `java.library.path` is only needed for custom native builds.
+The JAR includes Windows x64, Linux x64, Linux ARM64 and macOS ARM64 native binaries. If `rust-java-rest` is already on the classpath, `java-rust-cache` reuses its native bridge; otherwise it extracts and loads its own packaged `rust_hyper` binary. A manual `java.library.path` is only needed for custom native builds.
 
 ## Five-Minute Decision
 
@@ -33,7 +57,7 @@ Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires 
 snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`;
 role-specific native transport planes require ABI `6`. If
 the same application also uses `rust-java-rest`, use the current aligned line,
-`rust-java-rest:4.7.0` or newer within ABI `29`, so the framework native bridge and cache library use the same
+`rust-java-rest:4.8.0` or newer within ABI `29`, so the framework native bridge and cache library use the same
 binary contract. The packaged provenance manifest records REST ABI `29`, Dubbo ABI `7`, Redis ABI
 `6`, Glowroot ABI `6`, the full source revision, and platform SHA-256 hashes. Startup rejects a
 stale or mismatched binary.
@@ -43,6 +67,15 @@ By default, packaged native binaries are extracted under:
 ```text
 ${user.home}/.java-rust-cache/native/<binary-sha256-prefix>/
 ```
+
+Unreleased startup behavior: when cache loads its own packaged binary, it streams the resource
+through a fixed 16 KiB buffer into a staging file under this home-based or configured extraction
+root. The file is verified before placement in the hash-named directory. A matching cached binary
+is reused, and staging files are cleaned up. Resources larger than 64 MiB are rejected.
+
+This extraction path does not use `java.io.tmpdir` or hold the entire binary in a Java `byte[]`.
+Configuration names and native ABIs are unchanged. Bounded extraction buffers are not a claim of
+a measured RSS reduction.
 
 You can override this location with `reactor.cache.native.extract-dir` or `REACTOR_CACHE_NATIVE_EXTRACT_DIR`. In Kubernetes, point it to a writable application-owned directory or an `emptyDir` mount:
 
@@ -116,7 +149,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.8.1</version>
+  <version>0.9.0</version>
 </dependency>
 ```
 
@@ -131,7 +164,7 @@ The loader chooses the resource from the operating system and CPU architecture:
 | macOS ARM64 | `native/macos-arm64/librust_hyper-macos-arm64.dylib` |
 | Linux ARM64 | `native/linux-arm64/librust_hyper-linux-arm64.so` |
 
-The `0.8.1` package includes all four native binaries and their matching checksums.
+The `0.9.0` package includes all four native binaries and their matching checksums.
 ARM64 native builds pass CI; application smoke tests for this release use x64.
 For a custom build, use the REST repository's `scripts/sync-native-artifacts.ps1`.
 The loader verifies Redis ABI `6` and the
@@ -169,7 +202,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.8.1"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.9.0"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -190,6 +223,42 @@ try (RustCache cache = RustCaches.create()) {
 ```
 
 ## Versioned JSON Snapshot API
+
+In the source checkout, each lock acquisition has a different bounded owner token.
+A 128-bit random JVM prefix is generated once. An atomic sequence identifies
+each acquisition. Refresh tasks do not share a random-generator lock on every run.
+Redis still checks the exact owner before renewing or releasing a lease.
+TTL expiry, fencing and the multi-replica locking contract are unchanged.
+Do not checkpoint an active writer with live database/Redis connections or leases;
+start those resources and refresh jobs after restore.
+
+Source-only lease renewal: protected jobs with a lock TTL of at least 300 ms
+share one renewal task per lock manager. A short snapshot no longer creates and
+cancels its own timer. Shorter leases keep their existing per-lock schedule.
+Long jobs still renew their lease; publication still checks ownership and the
+fencing token. The existing renewal thread is reused. No new property, worker,
+SQL cache or cross-job lock retention is added. You keep the same refresh API.
+This change does not remove the Redis calls required for safe publication.
+The shared timer only renews a lease after that lease's own renewal deadline.
+A tick immediately after acquisition does not issue another Redis call or delay
+the snapshot commit. Long-running jobs retain TTL renewal and fenced publication.
+
+The source checkout includes an optional native snapshot-batch capability.
+It is disabled by default. Select it with
+`reactor.cache.redis.snapshot-batch-enabled=true` or
+`REACTOR_CACHE_REDIS_SNAPSHOT_BATCH_ENABLED=true` only after testing your workload.
+This is an experimental source option, not the recommended production default.
+`refreshSnapshotWithLock` and generated projection materializers use it when
+available on standalone/Sentinel. A small refresh uses two write calls instead
+of separate lock, fence, data, pointer and unlock calls. Final commit checks both
+remote lease ownership and the fencing token. Exact integer comparison also
+works beyond the precision of a Lua floating-point number. Partial batches never
+move the current pointer before their writes succeed. Batches remain bounded.
+Cluster and older ABI-compatible binaries retain the existing implementation;
+the extension does not change Redis ABI 6 or existing JNI signatures. Use the
+coordinated new native artifact to enable it. This is not a claim about an older
+published package or a universal latency guarantee.
+
 
 Use this path when one writer process precomputes JSON and one or more REST pods read it without rebuilding DTO graphs.
 
@@ -414,7 +483,7 @@ Add the processor only to the build path:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.8.1</version>
+  <version>0.9.0</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -427,6 +496,16 @@ BEST: let the library own lifecycle boilerplate. Keep SQL, row mapping, JSON sha
 business decisions in your application.
 
 ## Configuration
+
+### UTF-8 Writer Behavior
+
+The byte-oriented JSON writer copies consecutive ordinary text as a range. It does
+not build a temporary `String` or `char[]` for each field. Turkish characters,
+surrogate pairs, quotes and control characters still use the UTF-8 and JSON escape
+rules. Buffer size limits and reset behavior remain in force. This change requires
+no new property, thread, cache or per-thread retained buffer. It does not enable
+the separate optional SWAR writer. A lower encoding cost does not remove database,
+Redis lock, publication or JVM compilation time from a refresh job.
 
 All keys can be provided as Java system properties, environment variables, or a `Properties` object.
 
@@ -623,6 +702,33 @@ The reconnect gate intentionally allows the first operation after restart to fai
 - Treat a cache miss as a normal business condition. Do not retry it as a transport failure.
 - Never put credentials in a tracked properties file or release artifact.
 
+## Keep Frequent Refreshes Apart
+
+By default, the next refresh starts one interval after the previous job finishes.
+Different job durations can gradually move initially staggered projections together.
+For frequent, independent refreshes, opt into a phase-anchored schedule:
+
+```properties
+sample.writer.phase-anchored=true
+sample.writer.interval-ms=500
+sample.writer.detail.initial-delay-ms=2000
+sample.writer.segment.initial-delay-ms=2100
+sample.writer.status.initial-delay-ms=2200
+sample.writer.campaign.initial-delay-ms=2300
+sample.writer.meta.initial-delay-ms=2400
+```
+
+Each projection keeps its startup phase on a monotonic clock. A late job skips
+missed time slots instead of creating a catch-up burst. The same projection never
+runs concurrently with itself. The existing scheduler thread limit, Redis lease,
+fence, TTL and shutdown rules still apply. No additional worker or queue is added.
+The default is `false`; keep it when an interval of rest **after completion** is
+part of your workload contract. Run-once mode is unaffected. TTL must still exceed
+the interval plus the longest expected job/outage and your safety margin.
+
+This source-only option controls start times, not execution latency. It does not
+guarantee a lower job p99 and is not a new production default.
+
 ## Glossary
 
 | Term | Meaning |
@@ -636,4 +742,4 @@ The reconnect gate intentionally allows the first operation after restart to fai
 | In-flight | Operations started but not yet completed |
 | Native handle | A small Java-visible id for a response body that remains in Rust memory |
 
-Release details: [java-rust-cache 0.8.1](docs/RELEASE_NOTES_v0.8.1.md).
+Release details: [java-rust-cache 0.9.0](docs/RELEASE_NOTES_v0.9.0.md).

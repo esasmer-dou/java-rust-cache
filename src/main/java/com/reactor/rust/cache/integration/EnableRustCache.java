@@ -11,4 +11,16 @@ import java.lang.annotation.Target;
 public @interface EnableRustCache {
 
     String generatedConfigurationName() default "";
+
+    /**
+     * Controllers whose generated edge policies are installed before routes.
+     * Listing cache policies explicitly consents to public, uniform data: a hit skips
+     * Java handlers and guards. Never cache private or per-user output. Rate-only
+     * policies do not bypass Java authentication or business logic.
+     * Empty by default: no edge registration, native edge loading or additional startup branch.
+     */
+    Class<?>[] publicEdgePolicies() default {};
+
+    /** Optional startup-only switch for the listed policies; false when unset. */
+    String publicEdgeEnabledProperty() default "";
 }

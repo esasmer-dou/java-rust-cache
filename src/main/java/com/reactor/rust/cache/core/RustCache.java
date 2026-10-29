@@ -34,6 +34,16 @@ public final class RustCache implements RustCacheReader, RustCacheWriter, AutoCl
         return config;
     }
 
+    /**
+     * Explicit startup hook for generated public edge policies, before REST routes are frozen.
+     * The cache remains open until the HTTP server has drained. No edge mode is enabled by default.
+     */
+    public void installPublicEdgePolicies(java.util.function.IntConsumer registration) {
+        ensureOpen();
+        requireRead();
+        Objects.requireNonNull(registration, "registration").accept(clientId);
+    }
+
     public RustCacheReader reader() {
         requireRead();
         return this;
@@ -222,6 +232,25 @@ public final class RustCache implements RustCacheReader, RustCacheWriter, AutoCl
         ensureOpen();
         requireWrite();
         return NativeRedisBridge.acquireLock(clientId, requireKey(key), ownerToken, ttlMillis);
+    }
+
+    public boolean supportsSnapshotBatch() {
+        return config.snapshotBatchEnabled()
+                && config.topology() != com.reactor.rust.cache.config.RedisTopology.CLUSTER
+                && NativeRedisBridge.supportsSnapshotBatch();
+    }
+
+    public long beginSnapshot(String key, String owner, String fence, long ttl) {
+        ensureOpen();
+        requireWrite();
+        return NativeRedisBridge.beginSnapshot(clientId, requireKey(key), owner, requireKey(fence), ttl);
+    }
+
+    public int commitSnapshot(String key, String owner, String current, long fence, String version,
+                              long ttl, String[] keys, byte[][] values) {
+        ensureOpen();
+        requireWrite();
+        return NativeRedisBridge.commitSnapshot(clientId, key, owner, current, fence, version, ttl, keys, values);
     }
 
     public boolean renewLock(String key, String ownerToken, long ttlMillis) {

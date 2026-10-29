@@ -27,6 +27,7 @@ public final class RustCacheConfig {
     private final int writeConnections;
     private final int maxReadInflight;
     private final int maxWriteInflight;
+    private final boolean snapshotBatchEnabled;
     private final int maxResponseBytes;
     private final int clusterMaxRedirects;
     private final int topologyRefreshMs;
@@ -51,6 +52,7 @@ public final class RustCacheConfig {
         this.writeConnections = requirePositive(builder.writeConnections, "writeConnections");
         this.maxReadInflight = requirePositive(builder.maxReadInflight, "maxReadInflight");
         this.maxWriteInflight = requirePositive(builder.maxWriteInflight, "maxWriteInflight");
+        this.snapshotBatchEnabled = builder.snapshotBatchEnabled;
         this.maxResponseBytes = requirePositive(builder.maxResponseBytes, "maxResponseBytes");
         this.clusterMaxRedirects = requirePositive(builder.clusterMaxRedirects, "clusterMaxRedirects");
         this.topologyRefreshMs = requirePositive(builder.topologyRefreshMs, "topologyRefreshMs");
@@ -87,6 +89,11 @@ public final class RustCacheConfig {
         builder.writeConnections(readInt(properties, "write-connections", builder.writeConnections));
         builder.maxReadInflight(readInt(properties, "max-read-inflight", builder.maxReadInflight));
         builder.maxWriteInflight(readInt(properties, "max-write-inflight", builder.maxWriteInflight));
+        String batch = readString(properties, "snapshot-batch-enabled", "false").trim();
+        if (!"true".equalsIgnoreCase(batch) && !"false".equalsIgnoreCase(batch)) {
+            throw new IllegalArgumentException(PROPERTY_PREFIX + "snapshot-batch-enabled must be true or false");
+        }
+        builder.snapshotBatchEnabled(Boolean.parseBoolean(batch));
         builder.maxResponseBytes(readInt(properties, "max-response-bytes", builder.maxResponseBytes));
         builder.clusterMaxRedirects(readInt(properties, "cluster.max-redirects", builder.clusterMaxRedirects));
         builder.topologyRefreshMs(readInt(properties, "topology-refresh-ms", builder.topologyRefreshMs));
@@ -104,6 +111,8 @@ public final class RustCacheConfig {
     public RedisTopology topology() {
         return topology;
     }
+
+    public boolean snapshotBatchEnabled() { return snapshotBatchEnabled; }
 
     public RedisAccessMode accessMode() {
         return accessMode;
@@ -277,6 +286,7 @@ public final class RustCacheConfig {
         private int writeConnections = 2;
         private int maxReadInflight = 128;
         private int maxWriteInflight = 64;
+        private boolean snapshotBatchEnabled;
         private int maxResponseBytes = 1024 * 1024;
         private int clusterMaxRedirects = 5;
         private int topologyRefreshMs = 30_000;
@@ -405,6 +415,11 @@ public final class RustCacheConfig {
 
         public RustCacheConfig build() {
             return new RustCacheConfig(this);
+        }
+
+        public Builder snapshotBatchEnabled(boolean enabled) {
+            this.snapshotBatchEnabled = enabled;
+            return this;
         }
     }
 }

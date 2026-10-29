@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -26,6 +27,7 @@ public final class ProjectionRefreshScheduler implements AutoCloseable {
     private final ProjectionRefreshObserver observer;
     private final ScheduledExecutorService executor;
     private final boolean runOnce;
+    private final boolean phaseAnchored;
     private final CountDownLatch firstRunDone;
     private final long firstRunTimeoutMillis;
     private final ConcurrentHashMap<String, ProjectionRuntimeState> runtimeStates = new ConcurrentHashMap<>();
@@ -39,6 +41,7 @@ public final class ProjectionRefreshScheduler implements AutoCloseable {
         this.refresher = Objects.requireNonNull(builder.refresher, "refresher");
         this.observer = Objects.requireNonNull(builder.observer, "observer");
         this.runOnce = builder.runOnce;
+        this.phaseAnchored = builder.phaseAnchored;
         this.firstRunDone = new CountDownLatch(schedules.size());
         this.firstRunTimeoutMillis = builder.firstRunTimeoutMillis;
         for (ProjectionSchedule schedule : schedules) {
@@ -76,13 +79,54 @@ public final class ProjectionRefreshScheduler implements AutoCloseable {
             }
             return;
         }
+        long origin = System.nanoTime();
         for (ProjectionSchedule schedule : schedules) {
-            executor.scheduleWithFixedDelay(
+            if (phaseAnchored) {
+                new AnchoredRefresh(schedule, origin).schedule();
+            } else {
+                executor.scheduleWithFixedDelay(
                     () -> safeRefresh(schedule),
                     schedule.initialDelayMillis(),
                     schedule.intervalMillis(),
                     TimeUnit.MILLISECONDS);
+            }
         }
+    }
+
+    /** One outstanding task per projection; late slots are skipped, never replayed. */
+    private final class AnchoredRefresh implements Runnable {
+        private final ProjectionSchedule projection;
+        private final long interval;
+        private long next;
+
+        AnchoredRefresh(ProjectionSchedule projection, long origin) {
+            this.projection = projection;
+            this.interval = TimeUnit.MILLISECONDS.toNanos(projection.intervalMillis());
+            this.next = origin + TimeUnit.MILLISECONDS.toNanos(projection.initialDelayMillis());
+        }
+
+        void schedule() {
+            if (closed.get()) return;
+            try {
+                executor.schedule(this, Math.max(0L, next - System.nanoTime()), TimeUnit.NANOSECONDS);
+            } catch (RejectedExecutionException stopped) {
+                if (!closed.get()) throw stopped;
+            }
+        }
+
+        @Override public void run() {
+            if (closed.get()) return;
+            // A fatal Error must stop this projection, just as a periodic executor task would.
+            safeRefresh(projection);
+            next = nextPhase(next, System.nanoTime(), interval);
+            schedule();
+        }
+    }
+
+    static long nextPhase(long previous, long now, long interval) {
+        if (interval <= 0) throw new IllegalArgumentException("interval must be positive");
+        long elapsed = now - previous;
+        return previous + (elapsed < 0 ? 1 : elapsed / interval + 1) * interval;
     }
 
     public void awaitFirstRun() {
@@ -315,6 +359,7 @@ public final class ProjectionRefreshScheduler implements AutoCloseable {
         private List<CacheWriterProjectionSettings> settings = List.of();
         private ProjectionRefresher refresher;
         private boolean runOnce;
+        private boolean phaseAnchored;
         private int schedulerThreads = 1;
         private long schedulerThreadStackBytes = 256L * 1024L;
         private String threadNamePrefix = "cache-writer";
@@ -338,6 +383,11 @@ public final class ProjectionRefreshScheduler implements AutoCloseable {
 
         public Builder runOnce(boolean runOnce) {
             this.runOnce = runOnce;
+            return this;
+        }
+
+        public Builder phaseAnchored(boolean phaseAnchored) {
+            this.phaseAnchored = phaseAnchored;
             return this;
         }
 

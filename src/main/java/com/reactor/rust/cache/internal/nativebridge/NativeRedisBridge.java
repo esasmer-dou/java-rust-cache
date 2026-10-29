@@ -6,11 +6,7 @@ import com.reactor.rust.cache.core.RedisCacheException;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
@@ -241,6 +237,27 @@ public final class NativeRedisBridge {
         return nativeAcquireLock(clientId, key, ownerToken, ttlMillis);
     }
 
+    public static boolean supportsSnapshotBatch() {
+        return SnapshotBatchSupport.AVAILABLE;
+    }
+
+    private static final class SnapshotBatchSupport {
+        static final boolean AVAILABLE = probe();
+        private static boolean probe() {
+            try { return nativeSnapshotBatchVersion() == 1; }
+            catch (UnsatisfiedLinkError legacy) { return false; }
+        }
+    }
+
+    public static long beginSnapshot(int clientId, String key, String owner, String fence, long ttl) {
+        return nativeBeginSnapshot(clientId, key, owner, fence, ttl);
+    }
+
+    public static int commitSnapshot(int clientId, String key, String owner, String current, long fence,
+                                     String version, long ttl, String[] keys, byte[][] values) {
+        return nativeCommitSnapshot(clientId, key, owner, current, fence, version, ttl, keys, values);
+    }
+
     public static boolean renewLock(int clientId, String key, String ownerToken, long ttlMillis) {
         return nativeRenewLock(clientId, key, ownerToken, ttlMillis);
     }
@@ -380,15 +397,14 @@ public final class NativeRedisBridge {
                 return new UnsatisfiedLinkError("Missing packaged native resource: " + resource);
         }
         try (InputStream input = binaryResource.openStream()) {
-            byte[] bytes = input.readAllBytes();
-            String platform = platformName(resource);
-            String hash = NativeCacheProvenance.verifyPackagedBinary(
+            Path library = NativeCacheArtifactStager.stage(
                     binaryResource,
-                    platform,
-                    bytes,
+                    platformName(resource),
+                    input,
+                    nativeExtractRoot(),
+                    resource.substring(resource.lastIndexOf('/') + 1),
                     REDIS_ACCESS_MODE_ABI_VERSION
             );
-            Path library = extractNativeLibrary(bytes, resource, hash);
             System.load(library.toAbsolutePath().toString());
             return null;
         } catch (UnsatisfiedLinkError e) {
@@ -398,29 +414,6 @@ public final class NativeRedisBridge {
             error.initCause(e);
             return error;
         }
-    }
-
-    private static Path extractNativeLibrary(byte[] bytes, String resource, String hash) throws IOException {
-        String fileName = resource.substring(resource.lastIndexOf('/') + 1);
-        Path directory = nativeExtractRoot().resolve(hash.substring(0, 16));
-        Files.createDirectories(directory);
-        Path library = directory.resolve(fileName);
-        if (Files.exists(library)
-                && Files.size(library) == bytes.length
-                && hash.equals(NativeCacheProvenance.sha256(library))) {
-            return library;
-        }
-
-        Path temp = Files.createTempFile(directory, fileName, ".tmp");
-        Files.write(temp, bytes);
-        try {
-            Files.move(temp, library, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException ignored) {
-            Files.move(temp, library, StandardCopyOption.REPLACE_EXISTING);
-        } catch (FileAlreadyExistsException ignored) {
-            Files.deleteIfExists(temp);
-        }
-        return library;
     }
 
     private static Path nativeExtractRoot() {
@@ -592,6 +585,11 @@ public final class NativeRedisBridge {
     private static native boolean nativeExpire(int clientId, String key, long ttlMillis);
 
     private static native boolean nativeAcquireLock(int clientId, String key, String ownerToken, long ttlMillis);
+
+    private static native int nativeSnapshotBatchVersion();
+    private static native long nativeBeginSnapshot(int clientId, String key, String owner, String fence, long ttl);
+    private static native int nativeCommitSnapshot(int clientId, String key, String owner, String current,
+            long fence, String version, long ttl, String[] keys, byte[][] values);
 
     private static native boolean nativeRenewLock(int clientId, String key, String ownerToken, long ttlMillis);
 

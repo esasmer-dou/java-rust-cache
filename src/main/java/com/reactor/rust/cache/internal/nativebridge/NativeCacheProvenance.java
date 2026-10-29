@@ -3,6 +3,7 @@ package com.reactor.rust.cache.internal.nativebridge;
 import com.reactor.rust.cache.core.RedisCacheException;
 
 import java.io.IOException;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,28 +23,64 @@ final class NativeCacheProvenance {
             String platform,
             byte[] binary,
             int expectedRedisAbi) {
-        Properties manifest = loadManifest(classLoader);
+        Properties manifest = loadManifest(classLoader, platform);
         return verify(manifest, platform, binary, expectedRedisAbi);
     }
 
     static String verifyPackagedBinary(java.net.URL binaryResource, String platform, byte[] binary, int expectedRedisAbi) {
+        return verify(loadManifest(binaryResource), platform, binary, expectedRedisAbi);
+    }
+
+    static String verifyPackagedBinary(java.net.URL binaryResource, String platform, Path binary, int expectedRedisAbi)
+            throws IOException {
+        return verifyHash(platform, expectedHash(loadManifest(binaryResource), platform, expectedRedisAbi), sha256(binary));
+    }
+
+    private static Properties loadManifest(java.net.URL binaryResource) {
         // Resolve relative to the selected binary, not the first unrelated manifest on the classpath.
         try {
-            var connection = new java.net.URL(binaryResource, "../native-provenance.properties").openConnection();
-            connection.setUseCaches(false);
-            try (InputStream input = connection.getInputStream()) {
-            Properties manifest = new Properties();
-            manifest.load(input);
-            return verify(manifest, platform, binary, expectedRedisAbi);
+            try {
+                return readManifest(new java.net.URL(binaryResource, "native-provenance.properties"));
+            } catch (FileNotFoundException missingPlatformManifest) {
+                return readManifest(new java.net.URL(binaryResource, "../native-provenance.properties"));
             }
         } catch (IOException error) { throw new RedisCacheException("Cannot read native provenance beside the selected binary", error); }
     }
 
+    private static Properties readManifest(java.net.URL resource) throws IOException {
+        try (InputStream input = openManifest(resource)) {
+            Properties manifest = new Properties();
+            manifest.load(input);
+            return manifest;
+        }
+    }
+
+    private static InputStream openManifest(java.net.URL resource) throws IOException {
+        if ("file".equals(resource.getProtocol())) {
+            try {
+                return Files.newInputStream(Path.of(resource.toURI()));
+            } catch (java.nio.file.NoSuchFileException missing) {
+                throw new FileNotFoundException(resource.toString());
+            } catch (java.net.URISyntaxException malformed) {
+                throw new IOException("Invalid native manifest URI", malformed);
+            }
+        }
+        var connection = resource.openConnection();
+        connection.setUseCaches(false);
+        return connection.getInputStream();
+    }
+
     private static String verify(Properties manifest, String platform, byte[] binary, int expectedRedisAbi) {
+        return verifyHash(platform, expectedHash(manifest, platform, expectedRedisAbi), sha256(binary));
+    }
+
+    private static String expectedHash(Properties manifest, String platform, int expectedRedisAbi) {
         requireEquals(manifest, "schema", "2");
         requireEquals(manifest, "redis.abi", Integer.toString(expectedRedisAbi));
-        String expectedHash = required(manifest, platform + ".sha256");
-        String actualHash = sha256(binary);
+        return required(manifest, platform + ".sha256");
+    }
+
+    private static String verifyHash(String platform, String expectedHash, String actualHash) {
         if (!actualHash.equalsIgnoreCase(expectedHash)) {
             throw new RedisCacheException(
                     "Packaged Redis native binary hash mismatch for " + platform
@@ -77,8 +114,10 @@ final class NativeCacheProvenance {
         }
     }
 
-    private static Properties loadManifest(ClassLoader classLoader) {
-        try (InputStream input = classLoader.getResourceAsStream(MANIFEST_RESOURCE)) {
+    private static Properties loadManifest(ClassLoader classLoader, String platform) {
+        InputStream selected = classLoader.getResourceAsStream("native/" + platform + "/native-provenance.properties");
+        if (selected == null) selected = classLoader.getResourceAsStream(MANIFEST_RESOURCE);
+        try (InputStream input = selected) {
             if (input == null) {
                 throw new RedisCacheException(
                         "Packaged native provenance manifest is missing: " + MANIFEST_RESOURCE

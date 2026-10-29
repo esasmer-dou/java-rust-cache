@@ -15,6 +15,42 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ProjectionRefreshSchedulerTest {
 
     @Test
+    void anchoredDeadlinePreservesPhaseAndSkipsMissedSlots() {
+        assertEquals(1_500, ProjectionRefreshScheduler.nextPhase(1_000, 1_040, 500));
+        assertEquals(3_000, ProjectionRefreshScheduler.nextPhase(1_000, 2_850, 500));
+        assertEquals(2_000, ProjectionRefreshScheduler.nextPhase(1_000, 1_500, 500));
+        assertEquals(Long.MIN_VALUE + 499,
+                ProjectionRefreshScheduler.nextPhase(Long.MAX_VALUE, Long.MIN_VALUE + 20, 500));
+        assertThrows(IllegalArgumentException.class,
+                () -> ProjectionRefreshScheduler.nextPhase(0, 0, 0));
+    }
+
+    @Test
+    void anchoredProjectionDoesNotOverlapAndStopsAfterClose() throws Exception {
+        var active = new java.util.concurrent.atomic.AtomicInteger();
+        var peak = new java.util.concurrent.atomic.AtomicInteger();
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        try (var scheduler = ProjectionRefreshScheduler.builder()
+                .settings(List.of(settings("detail", 0, 10)))
+                .phaseAnchored(true).schedulerThreads(2)
+                .refresher((name, lock, ttl) -> {
+                    peak.accumulateAndGet(active.incrementAndGet(), Math::max);
+                    try { calls.incrementAndGet(); Thread.sleep(35); }
+                    finally { active.decrementAndGet(); }
+                    return ProjectionRefreshResult.published(name, "v", 1);
+                }).observer(ProjectionRefreshObserver.noop()).build()) {
+            scheduler.start();
+            scheduler.awaitFirstRun(5, TimeUnit.SECONDS);
+            Thread.sleep(150);
+            assertEquals(1, peak.get());
+            assertTrue(calls.get() < 12, "No immediate catch-up burst");
+        }
+        int stopped = calls.get();
+        Thread.sleep(75);
+        assertEquals(stopped, calls.get());
+    }
+
+    @Test
     void propagatesFirstRefreshFailureToStartupGate() {
         try (ProjectionRefreshScheduler scheduler = ProjectionRefreshScheduler.builder()
                 .settings(List.of(settings("detail", 0, 1_000)))

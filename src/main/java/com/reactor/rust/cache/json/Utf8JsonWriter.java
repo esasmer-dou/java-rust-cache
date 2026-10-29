@@ -12,6 +12,21 @@ public abstract class Utf8JsonWriter {
     }
     protected final Utf8JsonBuffer json(int capacity) { return new Utf8JsonBuffer(Math.min(capacity, maxBytes), maxBytes); }
     protected final byte[] utf8(Utf8JsonBuffer out) { return out.toByteArray(); }
+
+    /** Prepare a fixed field name once, not on every row. Dynamic values remain escaped. */
+    protected final JsonField key(String name) {
+        var prefix = new Utf8JsonBuffer(32, 16_384);
+        return new JsonField(quote(prefix, name).append(':').toByteArray());
+    }
+
+    protected final class JsonField {
+        private final byte[] prefix;
+        private JsonField(byte[] prefix) { this.prefix = prefix; }
+        public Utf8JsonBuffer number(Utf8JsonBuffer out, long value) { return out.writeFieldPrefix(prefix).append(value); }
+        public Utf8JsonBuffer bool(Utf8JsonBuffer out, boolean value) { return out.writeFieldPrefix(prefix).append(value); }
+        public Utf8JsonBuffer string(Utf8JsonBuffer out, String value) { return quote(out.writeFieldPrefix(prefix), value); }
+        public Utf8JsonBuffer strings(Utf8JsonBuffer out, List<String> values) { return stringArray(out.writeFieldPrefix(prefix), values); }
+    }
     protected final Utf8JsonBuffer field(Utf8JsonBuffer out, String name, long value) { return quote(out, name).append(':').append(value); }
     protected final Utf8JsonBuffer field(Utf8JsonBuffer out, String name, boolean value) { return quote(out, name).append(':').append(value); }
     protected final Utf8JsonBuffer stringField(Utf8JsonBuffer out, String name, String value) { return quote(quote(out, name).append(':'), value); }
@@ -26,7 +41,16 @@ public abstract class Utf8JsonWriter {
         if (value != null) {
             for (int i = 0; i < value.length(); i++) {
                 char c = value.charAt(i);
-                if (c >= 32 && c != '"' && c != '\\') { out.append(c); continue; }
+                if (c >= 32 && c != '"' && c != '\\') {
+                    int start = i++;
+                    while (i < value.length()) {
+                        c = value.charAt(i);
+                        if (c < 32 || c == '"' || c == '\\') break;
+                        i++;
+                    }
+                    out.appendRange(value, start, i--);
+                    continue;
+                }
                 switch (c) {
                     case '"' -> out.append("\\\"");
                     case '\\' -> out.append("\\\\");

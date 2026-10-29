@@ -14,6 +14,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class RustCacheLocks implements AutoCloseable {
 
@@ -23,6 +24,9 @@ public final class RustCacheLocks implements AutoCloseable {
     private final ScheduledThreadPoolExecutor renewalExecutor;
     private final Set<CacheLock> activeLocks = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final AtomicLong renewalSchedules = new AtomicLong();
+    private ScheduledFuture<?> sharedRenewal;
+    private long sharedIntervalMillis = Long.MAX_VALUE;
 
     public RustCacheLocks(RustCache cache) {
         this.cache = Objects.requireNonNull(cache, "cache");
@@ -42,16 +46,29 @@ public final class RustCacheLocks implements AutoCloseable {
     }
 
     public CacheLock tryAcquire(String name, long ttlMillis) {
+        return tryAcquire(name, ttlMillis, null);
+    }
+
+    private CacheLock tryAcquire(String name, long ttlMillis, String fenceKey) {
         ensureOpen();
         String lockKey = lockKey(name);
         String ownerToken = ownerToken();
         if (ttlMillis <= 0) {
             throw new IllegalArgumentException("ttlMillis must be positive");
         }
-        if (!cache.acquireLock(lockKey, ownerToken, ttlMillis)) {
+        long fence = 0;
+        boolean acquired;
+        if (fenceKey != null && cache.supportsSnapshotBatch()) {
+            fence = cache.beginSnapshot(lockKey, ownerToken, fenceKey, ttlMillis);
+            acquired = fence > 0;
+        } else {
+            acquired = cache.acquireLock(lockKey, ownerToken, ttlMillis);
+        }
+        if (!acquired) {
             return null;
         }
         CacheLock lock = new CacheLock(cache, lockKey, ownerToken, activeLocks::remove);
+        lock.snapshotFence(fence);
         activeLocks.add(lock);
         if (closed.get()) {
             lock.close();
@@ -69,8 +86,16 @@ public final class RustCacheLocks implements AutoCloseable {
     }
 
     public boolean runOnceChecked(String name, long ttlMillis, ThrowingLockRunnable task) {
+        return runOnceChecked(name, ttlMillis, null, task);
+    }
+
+    public boolean runSnapshotChecked(String name, long ttlMillis, String fenceKey, ThrowingLockRunnable task) {
+        return runOnceChecked(name, ttlMillis, Objects.requireNonNull(fenceKey, "fenceKey"), task);
+    }
+
+    private boolean runOnceChecked(String name, long ttlMillis, String fenceKey, ThrowingLockRunnable task) {
         Objects.requireNonNull(task, "task");
-        CacheLock lock = tryAcquire(name, ttlMillis);
+        CacheLock lock = tryAcquire(name, ttlMillis, fenceKey);
         if (lock == null) {
             return false;
         }
@@ -80,7 +105,7 @@ public final class RustCacheLocks implements AutoCloseable {
             lock.ensureValid();
             renewal = startRenewer(lock, ttlMillis);
             task.run(lock);
-            lock.ensureValid();
+            if (!lock.snapshotCommitted()) lock.ensureValid();
             return true;
         } catch (Exception e) {
             throw new RedisCacheException("Locked cache task failed: " + name, e);
@@ -93,6 +118,14 @@ public final class RustCacheLocks implements AutoCloseable {
 
     private ScheduledFuture<?> startRenewer(CacheLock lock, long ttlMillis) {
         long intervalMillis = Math.max(1L, ttlMillis / 3L);
+        if (ttlMillis >= 300) {
+            lock.scheduleRenewal(ttlMillis);
+            startSharedRenewer(intervalMillis);
+            return null;
+        }
+        // Tiny leases keep their original per-lock cadence and do not force
+        // a manager-wide millisecond wakeup after the short task has ended.
+        renewalSchedules.incrementAndGet();
         return renewalExecutor.scheduleWithFixedDelay(() -> {
             try {
                 if (!lock.renew(ttlMillis)) {
@@ -103,6 +136,28 @@ public final class RustCacheLocks implements AutoCloseable {
             }
         }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
+
+    private synchronized void startSharedRenewer(long intervalMillis) {
+        ensureOpen();
+        if (intervalMillis >= sharedIntervalMillis) return;
+        if (sharedRenewal != null) sharedRenewal.cancel(false);
+        sharedIntervalMillis = intervalMillis;
+        renewalSchedules.incrementAndGet();
+        sharedRenewal = renewalExecutor.scheduleWithFixedDelay(
+                this::renewActiveLocks, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private void renewActiveLocks() {
+        if (activeLocks.isEmpty()) return;
+        for (CacheLock lock : activeLocks) {
+            // A shared tick can fall just after acquisition. Never renew that
+            // fresh lease or block its commit on an unnecessary Redis command.
+            // Tick <= ttl/3 leaves at least ttl/3 before expiry for a due lease.
+            lock.renewIfDue(System.nanoTime());
+        }
+    }
+
+    long renewalSchedulesForTest() { return renewalSchedules.get(); }
 
     @Override
     public void close() {
@@ -132,14 +187,25 @@ public final class RustCacheLocks implements AutoCloseable {
         return "lock:" + name.trim();
     }
 
-    private static String ownerToken() {
-        byte[] bytes = new byte[16];
-        TokenRandomHolder.INSTANCE.nextBytes(bytes);
-        return HexFormat.of().formatHex(bytes);
+    static String ownerToken() {
+        long sequence = TokenRandomHolder.SEQUENCE.getAndIncrement();
+        if (sequence < 0) {
+            throw new IllegalStateException("Redis lease owner sequence exhausted");
+        }
+        return TokenRandomHolder.PREFIX + ':' + Long.toHexString(sequence);
     }
 
     private static final class TokenRandomHolder {
-        private static final SecureRandom INSTANCE = new SecureRandom();
+        // Independent JVMs get 128 random bits; the counter prevents reuse within
+        // this JVM without a shared PRNG lock or an entropy read on every refresh.
+        private static final String PREFIX = prefix();
+        private static final AtomicLong SEQUENCE = new AtomicLong();
+
+        private static String prefix() {
+            byte[] bytes = new byte[16];
+            new SecureRandom().nextBytes(bytes);
+            return HexFormat.of().formatHex(bytes);
+        }
     }
 
     @FunctionalInterface

@@ -1,11 +1,35 @@
 # java-rust-cache
 
-[English](README.md) | [Türkçe](README.tr.md)
+[English](README.md) | [Turkish](README.tr.md)
+
+## 0.9.0 İle Başlayın
+
+İsteğe bağlı sürümlü L1 okuma ve sahipliği izlenen JSON yanıtları eklendi. Desteklenen yollarda Redis tekrarlarını ve Java payload dizilerini azaltır. Snapshot koruması, projection kilitleri ve okuma/yazma ayrımı korunur. Native dosya, belirlenen ana dizine sınırlı bir tamponla çıkarılır.
+
+[Kullanım rehberi](docs/versioned-l1.md) · [Sürüm notları](docs/RELEASE_NOTES_v0.9.0.md)
+
 
 Yeni kullanım rehberi: [Açık ve sınırlı işlemler](docs/functional-operations.tr.md).
 
-[![Sürüm](https://img.shields.io/badge/sürüm-0.8.1-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.8.1)
-[![REST çizgisi](https://img.shields.io/badge/rust--java--rest-4.7.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.7.0)
+Yayımlanmamış kaynak hazırlığı: [Native platformlar ve başlangıç uyumluluğu](docs/native-availability.tr.md).
+Korunan ARM temel dosyaları yeni isteğe bağlı özelliklerin güncel kaynak derlemesi değildir.
+
+Kaynak kod rehberi: [Opsiyonel versiyonlu L1](docs/versioned-l1.tr.md). Bu yeni
+API'ler yayımlanmış `0.9.0` paketinde yoktur. Mevcut okuyucular değişmez.
+
+Kaynak kod REST entegrasyonu: [Herkese açık GET için native edge kuralları](https://github.com/esasmer-dou/rust-java-rest/blob/master/NATIVE_EDGE.tr.md).
+Küçük bir okuma istemcisi açıkça seçilir. Java guard'ları kendiliğinden atlanmaz.
+
+Kaynak kodda public kurallar şu tanımla kaydedilebilir:
+`@EnableRustCache(publicEdgePolicies = PublicCatalogHandler.class,
+publicEdgeEnabledProperty = "sample.public.edge.enabled")`. Kurulum kodu derlemede
+üretilir. Reflection kullanılmaz. Property yalnız başlangıçta okunur; verilmezse
+`false` kabul edilir. Bu seçim yapılmayan mevcut annotation'lar önceki başlangıç
+kodunu üretir. [Ayrı public katalog örneğini](https://github.com/esasmer-dou/rest-sample-cache-reader/blob/master/docs/public-edge.tr.md)
+inceleyin. Bu annotation seçenekleri yayımlanmış `0.9.0` paketinde henüz yoktur.
+
+[![Sürüm](https://img.shields.io/badge/sürüm-0.9.0-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.9.0)
+[![REST çizgisi](https://img.shields.io/badge/rust--java--rest-4.8.0-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.8.0)
 
 `rust-java-rest` ile birlikte çalışmak için hazırlanmış minimum yüzeyli Redis cache istemcisidir.
 
@@ -32,9 +56,9 @@ routing ve bounded I/O işlerini Rust yönetir.
 Cluster routing için Redis native ABI `2`, Sentinel master yenileme için ABI `3`, fenced snapshot
 publish için ABI `4`, async GET ve native JSON response handle için ABI `5`, role göre native
 transport plane ayırmak için ABI `6` gerekir. Aynı uygulama
-`rust-java-rest` de kullanıyorsa ABI `29` içindeki `rust-java-rest:4.7.0` veya daha yeni sürümü kullanın. Böylece
+`rust-java-rest` de kullanıyorsa ABI `29` içindeki `rust-java-rest:4.8.0` veya daha yeni sürümü kullanın. Böylece
 framework native bridge ile cache library aynı binary sözleşmesini kullanır. Paketlenen provenance
-manifesti REST ABI `29`, Dubbo ABI `7`, Redis ABI `6`, Glowroot ABI `4`, tam kaynak revision ve
+manifesti REST ABI `29`, Dubbo ABI `7`, Redis ABI `6`, Glowroot ABI `6`, tam kaynak revision ve
 platform SHA-256 hash'lerini taşır. Eski veya uyumsuz binary startup sırasında reddedilir.
 
 Varsayılan native binary çıkarma dizini:
@@ -42,6 +66,15 @@ Varsayılan native binary çıkarma dizini:
 ```text
 ${user.home}/.java-rust-cache/native/<binary-sha256-prefix>/
 ```
+
+Yayımlanmamış başlangıç davranışı: cache kendi paketlediği native dosyayı yüklerken kaynağı sabit
+16 KiB tamponla, bu kullanıcı ana dizini veya yapılandırılmış çıkarma kökü altında geçici bir
+dosyaya akış halinde kopyalar. Dosya doğrulanmadan hash adlı dizine yerleştirilmez. Eşleşen mevcut
+dosya yeniden kullanılır, geçici dosyalar temizlenir. 64 MiB'ı aşan kaynaklar reddedilir.
+
+Bu çıkarma yolu `java.io.tmpdir` kullanmaz ve dosyanın tamamını Java `byte[]` dizisinde tutmaz.
+Yapılandırma adları ve native ABI'ler değişmez. Sınırlı çıkarma tamponları, ölçülmüş bir RSS azalması
+iddiası değildir.
 
 Bu dizini `reactor.cache.native.extract-dir` veya `REACTOR_CACHE_NATIVE_EXTRACT_DIR` ile değiştirebilirsiniz. Kubernetes üzerinde bu değeri uygulamanın yazabildiği bir dizine veya `emptyDir` mount altına verin:
 
@@ -118,7 +151,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.8.1</version>
+  <version>0.9.0</version>
 </dependency>
 ```
 
@@ -133,7 +166,7 @@ Yükleyici, işletim sistemi ve işlemci mimarisine göre dosyayı seçer:
 | macOS ARM64 | `native/macos-arm64/librust_hyper-macos-arm64.dylib` |
 | Linux ARM64 | `native/linux-arm64/librust_hyper-linux-arm64.so` |
 
-`0.8.1` paketi dört platformun native dosyalarını ve checksum bilgilerini içerir.
+`0.9.0` paketi dört platformun native dosyalarını ve checksum bilgilerini içerir.
 ARM64 native build'leri CI üzerinde doğrulanır. Bu sürümün uygulama smoke testleri x64 kullanır.
 Özel build için REST reposundaki `scripts/sync-native-artifacts.ps1` aracını kullanın.
 Yükleyici, dosyayı açmadan önce Redis ABI `6`
@@ -171,7 +204,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.8.1"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.9.0"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -199,6 +232,42 @@ try (RustCache cache = RustCaches.create()) {
 ```
 
 ## Versioned JSON Snapshot API
+
+Kaynak kodda her kilit alımı farklı ve sınırlı uzunlukta bir sahiplik token'ı alır.
+JVM için 128 bit rastgele bir önek yalnız bir kez üretilir. Her alımı atomik bir
+sıra numarası ayırır. Yenileme işleri her çalışmada ortak rastgele sayı üretecini
+beklemez. Redis, kilidi yenilerken veya bırakırken tam sahiplik değerini yine
+kontrol eder. TTL, fencing ve birden fazla replica ile çalışma kuralı değişmez.
+Açık DB/Redis bağlantıları veya kilitleri olan writer'dan checkpoint almayın.
+Bu kaynakları ve yenileme işlerini restore sonrasında başlatın.
+
+Henüz yayımlanmayan kilit yenileme düzeni: kilit TTL'i en az 300 ms olan işler,
+aynı kilit yöneticisindeki ortak yenileme görevini kullanır. Kısa snapshot işi
+her çalışmada ayrı zamanlayıcı oluşturup iptal etmez. Daha kısa TTL'ler mevcut
+iş başına zamanlamayı kullanır. Uzun işin kilidi yenilenir. Yayın sırasında kilit
+sahibi ve fencing token'ı yine kontrol edilir. Mevcut yenileme thread'i korunur.
+Yeni property, worker veya SQL cache'i eklenmez. İşler arasında kilit tutulmaz.
+Refresh API'si değişmez. Güvenli yayın için gereken Redis çağrıları kaldırılmaz.
+Ortak zamanlayıcı, yalnız kendi yenileme zamanı gelen kilidi yeniler. Kilit yeni
+alındıysa araya gereksiz Redis çağrısı girmez ve yayın bu çağrıyı beklemez.
+Uzun işlerde TTL yenilemesi ve fencing kontrolü korunur.
+
+Kaynak kodda isteğe bağlı native snapshot birleştirme desteği bulunur.
+Varsayılan olarak kapalıdır. Kendi yükünüzü ölçtükten sonra
+`reactor.cache.redis.snapshot-batch-enabled=true` veya
+`REACTOR_CACHE_REDIS_SNAPSHOT_BATCH_ENABLED=true` ile seçebilirsiniz.
+Bu seçenek deneysel kaynak desteğidir; önerilen production varsayılanı değildir.
+`refreshSnapshotWithLock` ve üretilen projection materializer'ları, uygun native
+dosya varsa standalone/Sentinel üzerinde bu yolu kullanır. Küçük yenileme için
+kilit, token, veri, sürüm ve kilit bırakma ayrı ayrı gönderilmez. İki yazma çağrısı
+yeterlidir. Son yayın hem Redis'teki kilit sahibini hem fencing token'ı kontrol
+eder. Büyük token'lar Lua'nın sayı hassasiyetine bağlı kalmadan karşılaştırılır.
+Veri yazımı başarısızsa aktif sürüm ilerletilmez. Partiler sınırlı kalır.
+Cluster ve eski uyumlu native dosyalar mevcut uygulamayı kullanır. Redis ABI 6
+ve mevcut JNI imzaları değişmez. Yeni yol için birlikte üretilmiş native dosyayı
+kullanın. Bu açıklama, eski yayınlanmış pakette özelliğin bulunduğu veya her
+ortamda aynı gecikmenin elde edileceği anlamına gelmez.
+
 
 Bu yol şu senaryo için doğru seçimdir:
 
@@ -420,7 +489,7 @@ Processor'ı yalnız build path'e ekleyin:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.8.1</version>
+  <version>0.9.0</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -432,6 +501,16 @@ içinde olmadığını doğrular.
 BEST: Lifecycle boilerplate kodunu library'ye bırakın. SQL, row mapping, JSON shape ve cache key business kararlarını uygulama kodunda açık tutun.
 
 ## Configuration
+
+### UTF-8 Writer Davranışı
+
+Byte tabanlı JSON writer, art arda gelen normal metni tek aralık olarak kopyalar.
+Her alan için geçici `String` veya `char[]` oluşturmaz. Türkçe karakterler, surrogate
+çiftleri, tırnak ve kontrol karakterleri UTF-8 ve JSON kaçış kurallarıyla yazılır.
+Buffer boyut sınırı ve sıfırlama davranışı korunur. Yeni property, thread, cache
+veya thread başına kalıcı buffer eklenmez. Ayrı ve isteğe bağlı SWAR writer bu
+değişiklikle açılmaz. Encode maliyetinin azalması; DB, Redis kilidi, yayın işlemi
+ve JVM derleme süresinin refresh işinden kalktığı anlamına gelmez.
 
 Tüm key'ler Java system property, environment variable veya `Properties` object üzerinden verilebilir.
 
@@ -638,6 +717,33 @@ Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Prod
 - Cache miss durumunu normal iş sonucu olarak ele alın. Transport hatası gibi tekrar denemeyin.
 - Parolayı takip edilen property dosyasına veya release artifact'ine yazmayın.
 
+## Sık Yenilemeleri Aynı Ana Toplamayın
+
+Varsayılan davranışta interval, önceki iş bittikten sonra başlar. İş süreleri
+farklıysa başlangıçta aralıklı çalışan projection'lar zamanla aynı ana kayabilir.
+Sık ve bağımsız yenilemelerde başlangıç fazını koruyan seçeneği açabilirsiniz:
+
+```properties
+sample.writer.phase-anchored=true
+sample.writer.interval-ms=500
+sample.writer.detail.initial-delay-ms=2000
+sample.writer.segment.initial-delay-ms=2100
+sample.writer.status.initial-delay-ms=2200
+sample.writer.campaign.initial-delay-ms=2300
+sample.writer.meta.initial-delay-ms=2400
+```
+
+Her projection, monoton saat üzerinde kendi başlangıç aralığını korur. Uzayan
+iş nedeniyle kaçan zaman dilimleri peş peşe çalıştırılmaz. Aynı projection kendi
+kendiyle eşzamanlı çalışmaz. Thread sınırı, Redis kilidi, fencing, TTL ve kapanış
+kuralları değişmez. Ek worker veya kuyruk açılmaz. Varsayılan değer `false` olur.
+İş bittikten sonra tam bir interval dinlenmesi gerekiyorsa varsayılanı koruyun.
+Tek seferlik çalışma değişmez. TTL; interval, beklenen en uzun iş/kesinti süresi
+ve güvenlik payının toplamından uzun olmalıdır.
+
+Bu kaynak kod seçeneği başlangıç zamanını düzenler. İşin çalışma süresini
+kısaltmayı veya daha düşük p99'u garanti etmez. Yeni production varsayılanı değildir.
+
 ## Kısa Sözlük
 
 | Terim | Basit anlamı |
@@ -651,4 +757,4 @@ Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Prod
 | In-flight | Başlamış fakat henüz tamamlanmamış işlem |
 | Native handle | Body Rust belleğinde kalırken Java'nın taşıdığı küçük response kimliği |
 
-Sürüm ayrıntıları: [java-rust-cache 0.8.1](docs/RELEASE_NOTES_v0.8.1.tr.md).
+Sürüm ayrıntıları: [java-rust-cache 0.9.0](docs/RELEASE_NOTES_v0.9.0.tr.md).

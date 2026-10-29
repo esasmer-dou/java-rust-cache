@@ -20,4 +20,18 @@ class CacheFreshnessTest {
         assertTrue(CacheReadResult.staleHit(new byte[]{1}).hit());
         assertTrue(CacheReadResult.staleHit(new byte[]{1}).isStale());
     }
+
+    @Test void freshnessDeadlineHandlesExpiryMalformedFutureAndOverflow() {
+        var policy = new CacheFreshness(100, false);
+        assertEquals(1100, policy.freshUntilMillis("1000-1", 1000));
+        assertEquals(1100, policy.freshUntilMillis("1000-1", 1101));
+        for (String invalid : new String[]{"legacy", "-1-1", "0-1", "x-1", "1200-1",
+                "99999999999999999999-1"}) {
+            assertEquals(0, policy.freshUntilMillis(invalid, 1100), invalid);
+        }
+        String nearLimit = (Long.MAX_VALUE - 50) + "-1";
+        assertEquals(Long.MAX_VALUE, policy.freshUntilMillis(nearLimit, Long.MAX_VALUE));
+        assertFalse(policy.stale(nearLimit, Long.MAX_VALUE));
+        assertEquals(Long.MAX_VALUE, CacheFreshness.DISABLED.freshUntilMillis("legacy", 1000));
+    }
 }
