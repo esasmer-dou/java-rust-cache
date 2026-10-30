@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.9.1] - Unreleased
+## [0.9.1] - 2026-10-30
 
 - Fix stale Linux ARM64/macOS ARM64 provenance sidecars using actual packaged
   binary hashes. Keep compile-only ARM qualification explicit.
