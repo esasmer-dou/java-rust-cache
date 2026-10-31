@@ -451,6 +451,39 @@ BEST: Tekrar eden config parse kodunu library'ye bırakın. JSON şekli, SQL, ca
 
 ANTI-PATTERN: DTO class adından Redis key tahmin eden generic reflection mapper yazmak. Bu hem allocation üretir hem de runtime davranışını görünmez yapar.
 
+### Henüz Yayımlanmadı: Ortak HTTP Yanıt Politikası
+
+Yeni `CacheResponses.reply` yardımcısı yayımlanmış `0.9.1` paketinde yoktur. Mevcut projection
+annotation'ları backend seçimine göre `CacheReadValue` veya açık `CacheReadSnapshot` döndürebilir.
+Reader kontratına yeni annotation ya da HTTP dönüş tipi eklemek gerekmez:
+
+```java
+@GenerateProjectionReader(rootPrefix = "sample.cache.customer", restBean = true, allowL1 = true)
+interface CustomerReads {
+    @ProjectionIdRead(projection = "detail")
+    CacheReadValue customer(long id);
+}
+
+// Handler gövdesi: sahipliği devredin; dönen snapshot'ı burada kapatmayın.
+return CacheResponses.reply(reads.customer(customerId), "customer_not_found", "cache_not_ready");
+```
+
+`reactor.cache.http.problem-details` başlangıçta seçilir; varsayılanı `false`'tur. Üç argümanlı
+yardımcı bu politikayı kullanır: `false`, eski JSON hatalarını korur (miss ve not-ready/stale için
+`404`); `true`, ortak hataları seçer (miss için `404`, not-ready/stale için `503`, stale hit'te
+`X-Cache-Stale`). Açık `reply(value, missCode, notReadyCode, commonErrors)` overload'u,
+mevcut boolean seçimini koruyan çağıranlar için politikayı geçersiz kılar; `true`, eski JSON'u değil
+ortak hataları seçer. `sample.errors.common-contract` uygulama anahtarıdır; core için takma ad değildir.
+Mevcut açık `CacheResponsePolicy.production(...)`, miss ile hazırlık durumunu bağımsız olarak ayırır.
+
+Üretilen ID/index/meta metotları Value/Snapshot sahipliğini değiştirmeden döndürür; body'yi kapatmaz
+veya yeni bir payload'a dönüştürmez. Redis seçilen Value okumaları raw-result yolunda kalır. L1 hit,
+off-heap slab'dan yanıt buffer'ına ara Java payload `byte[]` üretmeden yazılır. Managed yanıt, buffer
+yeniden yazımında owner'ı korur; başarı, exception veya iptalde bırakır. Bu okuma yolunda reflection
+yoktur; HTTP yanıt byte'ları otomatik cache'lenmez. `allowL1=true` yalnız yapılandırılmış L1'e izin
+verir; max-entries yoksa veya sıfırsa Redis-only kalır. Yapılandırılmış slab, process başına sınırlı
+native bellek kullanır. Bu yardımcı yeni L1 varsayılanı veya yeni ABI eklemez.
+
 ## Writer-Side Boilerplate Helpers
 
 `java-rust-cache`, cache process'leri için küçük helper sınıflar da taşır. Bunlar bilinçli olarak açık tutulur:

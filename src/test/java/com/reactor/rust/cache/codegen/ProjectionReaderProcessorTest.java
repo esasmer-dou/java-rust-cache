@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -108,6 +109,21 @@ class ProjectionReaderProcessorTest {
                     @ProjectionIndexRead(projection="segment", index="segment", defaultValue="standard")
                     CacheReadResult segment(String value);
                     @CacheMetricsRead String metricsJson();
+                    @ProjectionMetaRead(projection="meta") com.reactor.rust.cache.api.CacheReadSnapshot borrowedMeta();
+                    @ProjectionIndexRead(projection="segment", index="segment", defaultValue="standard")
+                    com.reactor.rust.cache.api.CacheReadSnapshot borrowedIndex(String value);
+                }
+                final class CustomerHttpRoutes {
+                    static com.reactor.rust.http.ResponseEntity<?>[] replies(CustomerCache reader, long id, String key) {
+                        return new com.reactor.rust.http.ResponseEntity<?>[] {
+                            com.reactor.rust.cache.http.CacheResponses.reply(reader.selected(id), "missing", "not_ready"),
+                            com.reactor.rust.cache.http.CacheResponses.reply(reader.selectedMeta(), "missing", "not_ready"),
+                            com.reactor.rust.cache.http.CacheResponses.reply(reader.selectedIndex(key), "missing", "not_ready"),
+                            com.reactor.rust.cache.http.CacheResponses.reply(reader.borrowed(id), "missing", "not_ready"),
+                            com.reactor.rust.cache.http.CacheResponses.reply(reader.borrowedMeta(), "missing", "not_ready"),
+                            com.reactor.rust.cache.http.CacheResponses.reply(reader.borrowedIndex(key), "missing", "not_ready")
+                        };
+                    }
                 }
                 """, StandardCharsets.UTF_8);
         Path generated = Files.createDirectories(tempDir.resolve("l1-generated"));
@@ -132,9 +148,41 @@ class ProjectionReaderProcessorTest {
         assertTrue(reader.contains(".readMeta()"));
         assertTrue(reader.contains(".read(normalizedKey)"));
         assertFalse(reader.contains("getProperty("));
+        assertFalse(reader.contains("PropertiesLoader"));
+        assertFalse(reader.contains("CacheResponses"));
+        assertFalse(reader.contains("java.lang.reflect"));
+        assertFalse(reader.contains("byte[]"));
+        assertFalse(reader.contains(".bytes()"));
+        assertFalse(reader.contains("takeOwnership("));
+        assertOwnedMethod(reader, "CacheReadSnapshot", "borrowed(long id)",
+                "        return bound1.snapshotById(id);\n");
+        assertOwnedMethod(reader, "CacheReadValue", "selected(long id)",
+                "        return bound2.readById(id);\n");
+        assertOwnedMethod(reader, "CacheReadValue", "selectedMeta()",
+                "        return bound3.readMeta();\n");
+        assertOwnedMethod(reader, "CacheReadValue", "selectedIndex(java.lang.String value)", """
+                        String normalizedKey = value == null ? null : value.trim();
+                        return bound4.read(normalizedKey);
+                """);
+        assertOwnedMethod(reader, "CacheReadSnapshot", "borrowedMeta()",
+                "        return bound7.snapshotMeta();\n");
+        assertOwnedMethod(reader, "CacheReadSnapshot", "borrowedIndex(java.lang.String value)", """
+                        String normalizedKey = value == null ? null : value.trim();
+                        if (normalizedKey == null || normalizedKey.isBlank()) normalizedKey = "standard";
+                        return bound8.snapshot(normalizedKey);
+                """);
         String configuration = Files.readString(generated.resolve("generated/fixture/CustomerCache__ReactorConfiguration.java"));
         assertTrue(configuration.contains("@com.reactor.rust.di.annotation.PreDestroy"));
         assertTrue(configuration.contains("reader.close()"));
+        assertTrue(configuration.contains("com.reactor.rust.config.PropertiesLoader.getAll()"));
+    }
+
+    private static void assertOwnedMethod(String source, String type, String signature, String body) {
+        String header = "    @Override\n    public com.reactor.rust.cache.api." + type + " " + signature + " {\n";
+        int start = source.indexOf(header);
+        assertTrue(start >= 0, () -> "Missing generated method: " + signature);
+        int end = source.indexOf("    }\n", start) + "    }\n".length();
+        assertEquals(header + body + "    }\n", source.substring(start, end), signature);
     }
 
     @Test

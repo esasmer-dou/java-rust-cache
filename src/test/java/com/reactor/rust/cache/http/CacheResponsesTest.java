@@ -19,6 +19,28 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 class CacheResponsesTest {
 
     @Test
+    void replySelectsTheErrorPolicyWithoutCopyingHitBodies() {
+        byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+        for (boolean common : new boolean[]{false, true}) {
+            var response = CacheResponses.reply(CacheReadResult.hit(body), "missing", "not_ready", common);
+            assertSame(body, response.getBody().getBody());
+            assertEquals(common ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.NOT_FOUND,
+                    CacheResponses.reply(CacheReadResult.cacheNotReady(), "missing", "not_ready", common).getStatus());
+        }
+    }
+
+    @Test
+    void replyKeepsBorrowedSnapshotOwnershipUntilWriteOrCancellation() throws Exception {
+        var snapshot = CacheReadSnapshot.takeOwnership(CacheReadResult.hit(new byte[]{42, 7}));
+        var response = CacheResponses.reply((com.reactor.rust.cache.api.CacheReadValue) snapshot,
+                "missing", "not_ready", false);
+        var producer = assertInstanceOf(ManagedJsonBodyProducer.class, response.getBody());
+        assertEquals(-2, producer.write(ByteBuffer.allocateDirect(1), 0));
+        producer.close();
+        assertThrows(IllegalStateException.class, () -> producer.write(ByteBuffer.allocateDirect(4), 0));
+    }
+
+    @Test
     void backendSelectedRemoteHitUsesTheOriginalRawBodyWithoutSnapshotOwnership() {
         byte[] body = "{\"name\":\"\u0130pek\"}".getBytes(StandardCharsets.UTF_8);
         var value = CacheReadResult.hit(body);

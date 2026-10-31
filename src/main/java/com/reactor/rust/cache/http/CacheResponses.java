@@ -20,8 +20,30 @@ import java.util.Objects;
 public final class CacheResponses {
 
     private static final String DEFAULT_MISS_MESSAGE = "Redis snapshot is not available yet";
+    private static final boolean PROBLEM_DETAILS = com.reactor.rust.config.PropertiesLoader.getBoolean(
+            "reactor.cache.http.problem-details", false);
 
     private CacheResponses() {}
+
+    /** Applies the startup-selected error policy without copying borrowed L1 bodies. */
+    public static ResponseEntity<?> reply(CacheReadValue value, String missCode, String notReadyCode) {
+        return reply(value, missCode, notReadyCode, PROBLEM_DETAILS);
+    }
+
+    public static ResponseEntity<?> reply(
+            CacheReadValue value, String missCode, String notReadyCode, boolean problemDetails) {
+        return problemDetails ? valueProblem(value) : valueJson(value, missCode, notReadyCode);
+    }
+
+    public static ResponseEntity<RawResponse> reply(
+            CacheReadResult value, String missCode, String notReadyCode) {
+        return reply(value, missCode, notReadyCode, PROBLEM_DETAILS);
+    }
+
+    public static ResponseEntity<RawResponse> reply(
+            CacheReadResult value, String missCode, String notReadyCode, boolean problemDetails) {
+        return problemDetails ? problem(value) : json(value, missCode, notReadyCode);
+    }
 
     /** Remote results use the raw-body path; borrowed L1 results retain managed ownership. */
     public static ResponseEntity<?> valueJson(CacheReadValue value, String missCode, String notReadyCode) {

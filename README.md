@@ -441,6 +441,39 @@ BEST: use projection settings to remove repeated config parsing. Keep the JSON s
 cache key business decisions explicit in your application code. ANTI-PATTERN: a generic reflection
 mapper that guesses Redis keys from DTO class names.
 
+### Unreleased: Shared HTTP Reply Policy
+
+The new `CacheResponses.reply` helper is not in published `0.9.1`. Existing projection annotations
+already support backend-selected `CacheReadValue` and explicit `CacheReadSnapshot`; no new annotation
+or HTTP return type is needed in the reader contract:
+
+```java
+@GenerateProjectionReader(rootPrefix = "sample.cache.customer", restBean = true, allowL1 = true)
+interface CustomerReads {
+    @ProjectionIdRead(projection = "detail")
+    CacheReadValue customer(long id);
+}
+
+// Handler body: transfer ownership, do not close a returned snapshot here.
+return CacheResponses.reply(reads.customer(customerId), "customer_not_found", "cache_not_ready");
+```
+
+`reactor.cache.http.problem-details` is startup-selected and defaults to `false`. The three-argument
+helper uses that policy: `false` preserves legacy JSON errors (`404` for both miss and not-ready/stale);
+`true` selects common errors (`404` miss, `503` not-ready/stale, `X-Cache-Stale` on stale hits).
+The explicit overload `reply(value, missCode, notReadyCode, commonErrors)` overrides this
+policy for callers retaining an existing boolean switch; `true` selects common errors, not legacy JSON.
+`sample.errors.common-contract` is an application key, not a core alias. Existing explicit
+`CacheResponsePolicy.production(...)` still distinguishes a miss from readiness independently.
+
+The generated ID/index/meta methods return Value/Snapshot ownership unchanged; they do not close or
+materialize the body. Redis-selected Value reads retain the raw-result path. L1 hits write from the
+off-heap slab to the response buffer without an intermediate Java payload `byte[]`. The managed
+response retains its owner for buffer retry and releases it on success, exception or abort.
+There is no reflection on this read path and no automatic caching of HTTP response bytes.
+`allowL1=true` only permits configured L1: absent/zero max-entries remains Redis-only. A configured
+slab consumes bounded per-process native memory; this helper adds no L1 defaults or new ABI.
+
 ## Writer-Side Boilerplate Helpers
 
 `java-rust-cache` also includes small helper classes for cache processes. These helpers are
