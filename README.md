@@ -18,8 +18,10 @@ Opt-in versioned L1 reads and owned JSON responses reduce repeated Redis reads a
 New usage guide: [Explicit, bounded operations](docs/functional-operations.md).
 
 Native package compatibility: [Native availability and startup compatibility](docs/native-availability.md).
-All four packaged platforms use the coordinated source build. Runtime verification
-was performed on Linux x64; the other platforms have compile/provenance evidence.
+All four packaged platforms use the coordinated source build. OpenJ9 21 runtime
+checks passed on Windows x64, Linux ARM64 and macOS ARM64: 16 checks per platform,
+zero skips. Linux x64 load/soak qualification runs on EmaTech. Compatibility is
+not a Redis topology or performance qualification for the hosted platforms.
 
 Usage guide: [Opt-in versioned L1](docs/versioned-l1.md). These APIs
 are opt-in in `0.9.0`; existing readers remain unchanged.
@@ -172,7 +174,8 @@ The loader chooses the resource from the operating system and CPU architecture:
 | Linux ARM64 | `native/linux-arm64/librust_hyper-linux-arm64.so` |
 
 The `0.9.0` package includes all four native binaries and their matching checksums.
-ARM64 native builds pass CI; application smoke tests for this release use x64.
+OpenJ9 21 compatibility checks also execute on ARM64 and Windows. Performance and
+Redis topology evidence remain separately scoped to the recorded EmaTech runs.
 For a custom build, use the REST repository's `scripts/sync-native-artifacts.ps1`.
 The loader verifies Redis ABI `6` and the
 selected platform's hash before loading it. The cache-only process does not consume REST or

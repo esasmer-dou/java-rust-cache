@@ -2,8 +2,8 @@
 
 [English](versioned-l1.md) | [Turkish](versioned-l1.tr.md)
 
-This guide describes the opt-in APIs included in `java-rust-cache:0.9.0`.
-Use `rust-java-rest:4.8.0` for the aligned REST integration and native files.
+This guide describes the opt-in APIs included in `java-rust-cache:0.9.2`.
+Use `rust-java-rest:4.8.2` for the aligned REST integration and native files.
 L1 stays disabled unless explicitly selected; it is not a universal memory saving.
 
 `L1VersionedJsonCacheReader` is a separate reader. Existing

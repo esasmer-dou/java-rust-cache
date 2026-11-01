@@ -18,8 +18,11 @@ Redis topolojileri ve varsayılanlar değişmez. [Geçiş ayrıntıları](docs/R
 Yeni kullanım rehberi: [Açık ve sınırlı işlemler](docs/functional-operations.tr.md).
 
 Native paket uyumluluğu: [Native platformlar ve başlangıç uyumluluğu](docs/native-availability.tr.md).
-Dört platformun dosyaları aynı kaynak sürümünden derlenir. Çalışma testleri Linux
-x64 üzerinde yapılmıştır. Diğer platformlar için derleme ve kaynak doğrulaması vardır.
+Dört platformun dosyaları aynı kaynak sürümünden derlenir. OpenJ9 21 kontrolleri
+Windows x64, Linux ARM64 ve macOS ARM64 üzerinde geçti. Her platformda 16 kontrol
+çalıştı; atlanan test olmadı. Linux x64 yük ve uzun süreli çalışma testleri
+EmaTech'te yapılır. Uyumluluk sonucu, diğer platformların Redis topoloji veya
+performans testinden geçtiği anlamına gelmez.
 
 Kullanım rehberi: [İsteğe bağlı sürümlü L1](docs/versioned-l1.tr.md). Bu API'ler
 `0.9.0` paketinde bulunur. Mevcut okuyucular değişmez.
@@ -174,7 +177,8 @@ Yükleyici, işletim sistemi ve işlemci mimarisine göre dosyayı seçer:
 | Linux ARM64 | `native/linux-arm64/librust_hyper-linux-arm64.so` |
 
 `0.9.0` paketi dört platformun native dosyalarını ve checksum bilgilerini içerir.
-ARM64 native build'leri CI üzerinde doğrulanır. Bu sürümün uygulama smoke testleri x64 kullanır.
+OpenJ9 21 uyumluluk kontrolleri ARM64 ve Windows üzerinde de çalışır. Performans
+ve Redis topoloji sonuçları, kayıtlarda belirtilen EmaTech koşularına aittir.
 Özel build için REST reposundaki `scripts/sync-native-artifacts.ps1` aracını kullanın.
 Yükleyici, dosyayı açmadan önce Redis ABI `6`
 ve seçilen platformun hash bilgisini doğrular. Yalnız cache kullanan process, REST veya Glowroot
