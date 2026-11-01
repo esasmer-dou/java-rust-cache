@@ -15,3 +15,7 @@ target/
 /docs/PROJECT_MEMORY.md
 /docs/MEMORY.md
 /docs/HANDOFF.md
+
+# Hosted compatibility artifacts
+/compatibility-evidence/
+/compatibility-dependency/

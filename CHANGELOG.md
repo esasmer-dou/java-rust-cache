@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.9.2] - 2026-11-01
+
+- Align with REST/platform 4.8.2 and the clean bounded-response native runtime.
+- Keep Redis ABI 6, configuration and topology behavior unchanged.
+- [Upgrade notes](docs/RELEASE_NOTES_v0.9.2.md).
+
 ## [0.9.1] - 2026-10-30
 
 - Fix stale Linux ARM64/macOS ARM64 provenance sidecars using actual packaged

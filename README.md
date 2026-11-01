@@ -2,16 +2,17 @@
 
 [English](README.md) | [Turkish](README.tr.md)
 
-## ARM64 Packaging Fix: 0.9.1
+## 0.9.2: Aligned Native Responses
 
-Use cache 0.9.1 with REST/platform 4.8.1. This patch corrects ARM provenance without changing binary bytes,
-APIs or defaults. [Upgrade details](docs/RELEASE_NOTES_v0.9.1.md).
+Use cache 0.9.2 with REST/platform 4.8.2. The coordinated native buffer-lifecycle
+fixes and shared HTTP reply helper are included. Projection APIs, Redis topologies
+and defaults stay unchanged. [Upgrade details](docs/RELEASE_NOTES_v0.9.2.md).
 
-## Start With 0.9.1
+## Start With 0.9.2
 
 Opt-in versioned L1 reads and owned JSON responses reduce repeated Redis reads and avoid Java payload arrays on supported paths. Snapshot fencing, projection locks and reader/writer separation remain intact. Native extraction uses a bounded buffer under the configured home directory.
 
-[Usage guide](docs/versioned-l1.md) · [Release notes](docs/RELEASE_NOTES_v0.9.1.md)
+[Usage guide](docs/versioned-l1.md) · [Release notes](docs/RELEASE_NOTES_v0.9.2.md)
 
 
 New usage guide: [Explicit, bounded operations](docs/functional-operations.md).
@@ -34,8 +35,8 @@ without this opt-in generate the previous startup path. See the
 [separate public catalog sample](https://github.com/esasmer-dou/rest-sample-cache-reader/blob/master/docs/public-edge.md).
 These annotation options require version `0.9.0`.
 
-[![Version](https://img.shields.io/badge/version-0.9.1-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.9.1)
-[![REST line](https://img.shields.io/badge/rust--java--rest-4.8.1-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.8.1)
+[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.9.2)
+[![REST line](https://img.shields.io/badge/rust--java--rest-4.8.2-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.8.2)
 
 Minimal Redis cache client for `rust-java-rest`.
 
@@ -63,7 +64,7 @@ Cluster routing requires Redis native ABI `2`; Sentinel master refresh requires 
 snapshot publish requires ABI `4`; async GET and native JSON response handles require ABI `5`;
 role-specific native transport planes require ABI `6`. If
 the same application also uses `rust-java-rest`, use the current aligned line,
-`rust-java-rest:4.8.1` or newer within ABI `29`, so the framework native bridge and cache library use the same
+`rust-java-rest:4.8.2` or newer within ABI `29`, so the framework native bridge and cache library use the same
 binary contract. The packaged provenance manifest records REST ABI `29`, Dubbo ABI `7`, Redis ABI
 `6`, Glowroot ABI `6`, the full source revision, and platform SHA-256 hashes. Startup rejects a
 stale or mismatched binary.
@@ -155,7 +156,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.9.1</version>
+  <version>0.9.2</version>
 </dependency>
 ```
 
@@ -208,7 +209,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.9.1"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.9.2"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -441,9 +442,9 @@ BEST: use projection settings to remove repeated config parsing. Keep the JSON s
 cache key business decisions explicit in your application code. ANTI-PATTERN: a generic reflection
 mapper that guesses Redis keys from DTO class names.
 
-### Unreleased: Shared HTTP Reply Policy
+### Shared HTTP Reply Policy
 
-The new `CacheResponses.reply` helper is not in published `0.9.1`. Existing projection annotations
+Use `CacheResponses.reply` from cache `0.9.2` with REST/platform `4.8.2`. Existing projection annotations
 already support backend-selected `CacheReadValue` and explicit `CacheReadSnapshot`; no new annotation
 or HTTP return type is needed in the reader contract:
 
@@ -522,7 +523,7 @@ Add the processor only to the build path:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.9.1</version>
+  <version>0.9.2</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -781,4 +782,4 @@ guarantee a lower job p99 and is not a new production default.
 | In-flight | Operations started but not yet completed |
 | Native handle | A small Java-visible id for a response body that remains in Rust memory |
 
-Release details: [java-rust-cache 0.9.1](docs/RELEASE_NOTES_v0.9.1.md).
+Release details: [java-rust-cache 0.9.2](docs/RELEASE_NOTES_v0.9.2.md).
