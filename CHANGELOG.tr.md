@@ -1,5 +1,10 @@
 # Değişiklikler
 
+## [0.9.3] - 2026-11-24
+
+- Kimlikle yapılan senkron JSON okumaları, veri sürümünün anahtar önekini yeniden kullanır. Redis anahtarları ve JNI ABI değişmedi.
+- [Geçiş notları](docs/RELEASE_NOTES_v0.9.3.tr.md).
+
 ## [0.9.2] - 2026-11-01
 
 - REST/platform 4.8.2 ve sınırlı yanıt tamponları kullanan native runtime ile hizalandı.

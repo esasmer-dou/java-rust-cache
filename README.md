@@ -2,17 +2,18 @@
 
 [English](README.md) | [Turkish](README.tr.md)
 
-## 0.9.2: Aligned Native Responses
+## 0.9.3: Faster Lookup by ID
 
-Use cache 0.9.2 with REST/platform 4.8.2. The coordinated native buffer-lifecycle
+Use cache 0.9.3 with REST/platform 4.8.2 or 4.9.0. ID lookups reuse the snapshot's
+key prefix. Existing keys, data and settings stay unchanged. The native buffer-lifecycle
 fixes and shared HTTP reply helper are included. Projection APIs, Redis topologies
-and defaults stay unchanged. [Upgrade details](docs/RELEASE_NOTES_v0.9.2.md).
+and defaults stay unchanged. [Upgrade details](docs/RELEASE_NOTES_v0.9.3.md).
 
-## Start With 0.9.2
+## Start With 0.9.3
 
 Opt-in versioned L1 reads and owned JSON responses reduce repeated Redis reads and avoid Java payload arrays on supported paths. Snapshot fencing, projection locks and reader/writer separation remain intact. Native extraction uses a bounded buffer under the configured home directory.
 
-[Usage guide](docs/versioned-l1.md) · [Release notes](docs/RELEASE_NOTES_v0.9.2.md)
+[Usage guide](docs/versioned-l1.md) · [Release notes](docs/RELEASE_NOTES_v0.9.3.md)
 
 
 New usage guide: [Explicit, bounded operations](docs/functional-operations.md).
@@ -37,7 +38,7 @@ without this opt-in generate the previous startup path. See the
 [separate public catalog sample](https://github.com/esasmer-dou/rest-sample-cache-reader/blob/master/docs/public-edge.md).
 These annotation options require version `0.9.0`.
 
-[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.9.2)
+[![Version](https://img.shields.io/badge/version-0.9.3-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.9.3)
 [![REST line](https://img.shields.io/badge/rust--java--rest-4.8.2-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.8.2)
 
 Minimal Redis cache client for `rust-java-rest`.
@@ -158,7 +159,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.9.2</version>
+  <version>0.9.3</version>
 </dependency>
 ```
 
@@ -212,7 +213,7 @@ Set the token before running Maven:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.9.2"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.9.3"
 ```
 
 If Maven returns `401 Unauthorized`, first check that the token has `read:packages`, the environment variable is visible to the shell, and the `<server><id>` value matches the repository id in `pom.xml`.
@@ -447,7 +448,7 @@ mapper that guesses Redis keys from DTO class names.
 
 ### Shared HTTP Reply Policy
 
-Use `CacheResponses.reply` from cache `0.9.2` with REST/platform `4.8.2`. Existing projection annotations
+Use `CacheResponses.reply` with cache `0.9.3` and REST/platform `4.8.2` or `4.9.0`. Existing projection annotations
 already support backend-selected `CacheReadValue` and explicit `CacheReadSnapshot`; no new annotation
 or HTTP return type is needed in the reader contract:
 
@@ -526,7 +527,7 @@ Add the processor only to the build path:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.9.2</version>
+  <version>0.9.3</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -785,4 +786,4 @@ guarantee a lower job p99 and is not a new production default.
 | In-flight | Operations started but not yet completed |
 | Native handle | A small Java-visible id for a response body that remains in Rust memory |
 
-Release details: [java-rust-cache 0.9.2](docs/RELEASE_NOTES_v0.9.2.md).
+Release details: [java-rust-cache 0.9.3](docs/RELEASE_NOTES_v0.9.3.md).

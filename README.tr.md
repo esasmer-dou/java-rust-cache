@@ -2,17 +2,18 @@
 
 [English](README.md) | [Turkish](README.tr.md)
 
-## 0.9.2: Eşleşen Native Yanıtlar
+## 0.9.3: Kimlikle Daha Hızlı Okuma
 
-Cache 0.9.2 ile REST/platform 4.8.2 kullanın. Eşleşen native tampon yaşam döngüsü
+Cache 0.9.3 ile REST/platform 4.8.2 veya 4.9.0 kullanabilirsiniz. Kimlikle okuma
+aynı veri sürümünün anahtar önekini yeniden kullanır. Native tampon yaşam döngüsü
 düzeltmeleri ve ortak HTTP yanıt yardımcısı bu pakettedir. Projection API'leri,
-Redis topolojileri ve varsayılanlar değişmez. [Geçiş ayrıntıları](docs/RELEASE_NOTES_v0.9.2.tr.md).
+Redis anahtarları, topolojileri ve varsayılanlar değişmez. [Geçiş ayrıntıları](docs/RELEASE_NOTES_v0.9.3.tr.md).
 
-## 0.9.2 İle Başlayın
+## 0.9.3 ile Başlayın
 
 İsteğe bağlı sürümlü L1 okuma ve sahipliği izlenen JSON yanıtları eklendi. Desteklenen yollarda Redis tekrarlarını ve Java payload dizilerini azaltır. Snapshot koruması, projection kilitleri ve okuma/yazma ayrımı korunur. Native dosya, belirlenen ana dizine sınırlı bir tamponla çıkarılır.
 
-[Kullanım rehberi](docs/versioned-l1.tr.md) · [Sürüm notları](docs/RELEASE_NOTES_v0.9.2.tr.md)
+[Kullanım rehberi](docs/versioned-l1.tr.md) · [Sürüm notları](docs/RELEASE_NOTES_v0.9.3.tr.md)
 
 
 Yeni kullanım rehberi: [Açık ve sınırlı işlemler](docs/functional-operations.tr.md).
@@ -38,7 +39,7 @@ publicEdgeEnabledProperty = "sample.public.edge.enabled")`. Kurulum kodu derleme
 kodunu üretir. [Ayrı public katalog örneğini](https://github.com/esasmer-dou/rest-sample-cache-reader/blob/master/docs/public-edge.tr.md)
 inceleyin. Bu annotation seçenekleri `0.9.0` paketinde bulunur.
 
-[![Sürüm](https://img.shields.io/badge/sürüm-0.9.2-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.9.2)
+[![Sürüm](https://img.shields.io/badge/sürüm-0.9.3-blue.svg)](https://github.com/esasmer-dou/java-rust-cache/releases/tag/v0.9.3)
 [![REST çizgisi](https://img.shields.io/badge/rust--java--rest-4.8.2-green.svg)](https://github.com/esasmer-dou/rust-java-rest/releases/tag/v4.8.2)
 
 `rust-java-rest` ile birlikte çalışmak için hazırlanmış minimum yüzeyli Redis cache istemcisidir.
@@ -161,7 +162,7 @@ Maven dependency:
 <dependency>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.9.2</version>
+  <version>0.9.3</version>
 </dependency>
 ```
 
@@ -215,7 +216,7 @@ Maven çalıştırmadan önce token environment variable olarak verilir:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN="YOUR_TOKEN_WITH_READ_PACKAGES"
-mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.9.2"
+mvn -q dependency:get "-Dartifact=com.reactor:java-rust-cache:0.9.3"
 ```
 
 `401 Unauthorized` alırsanız önce üç şeyi kontrol edin:
@@ -458,7 +459,7 @@ ANTI-PATTERN: DTO class adından Redis key tahmin eden generic reflection mapper
 
 ### Ortak HTTP Yanıt Politikası
 
-Yeni `CacheResponses.reply` için cache `0.9.2` ve REST/platform `4.8.2` kullanın.
+`CacheResponses.reply` için cache `0.9.3` ve REST/platform `4.8.2` veya `4.9.0` kullanabilirsiniz.
 annotation'ları backend seçimine göre `CacheReadValue` veya açık `CacheReadSnapshot` döndürebilir.
 Reader kontratına yeni annotation ya da HTTP dönüş tipi eklemek gerekmez:
 
@@ -533,7 +534,7 @@ Processor'ı yalnız build path'e ekleyin:
 <path>
   <groupId>com.reactor</groupId>
   <artifactId>java-rust-cache</artifactId>
-  <version>0.9.2</version>
+  <version>0.9.3</version>
   <classifier>codegen</classifier>
 </path>
 ```
@@ -801,4 +802,4 @@ kısaltmayı veya daha düşük p99'u garanti etmez. Yeni production varsayılan
 | In-flight | Başlamış fakat henüz tamamlanmamış işlem |
 | Native handle | Body Rust belleğinde kalırken Java'nın taşıdığı küçük response kimliği |
 
-Sürüm ayrıntıları: [java-rust-cache 0.9.2](docs/RELEASE_NOTES_v0.9.2.tr.md).
+Sürüm ayrıntıları: [java-rust-cache 0.9.3](docs/RELEASE_NOTES_v0.9.3.tr.md).

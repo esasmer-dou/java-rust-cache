@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.9.3] - 2026-11-24
+
+- Synchronous versioned JSON reads reuse the key prefix for each snapshot. Redis keys and JNI ABI are unchanged.
+- [Upgrade notes](docs/RELEASE_NOTES_v0.9.3.md).
+
 ## [0.9.2] - 2026-11-01
 
 - Align with REST/platform 4.8.2 and the clean bounded-response native runtime.
