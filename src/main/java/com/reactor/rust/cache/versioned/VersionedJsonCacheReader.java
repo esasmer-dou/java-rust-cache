@@ -12,7 +12,7 @@ public final class VersionedJsonCacheReader {
     private final long versionCacheMillis;
     private final CacheFreshness freshness;
     private volatile Version cached;
-    private record Version(String value, long untilMillis, long freshUntilMillis) {}
+    private record Version(String value, String idPrefix, long untilMillis, long freshUntilMillis) {}
 
     public static VersionedJsonCacheReader create(RustCache cache, String namespace) {
         return create(cache, namespace, VersionedJsonKeys.DEFAULT_VERSION_CACHE_MILLIS);
@@ -51,7 +51,7 @@ public final class VersionedJsonCacheReader {
             return CacheReadResult.cacheNotReady();
         }
         if (stale(version) && !freshness.serveStale()) return CacheReadResult.stale();
-        byte[] bytes = cache.getBytes(VersionedJsonKeys.idKey(namespace, version.value(), id));
+        byte[] bytes = cache.getBytes(version.idPrefix() + id);
         return result(bytes, version);
     }
 
@@ -101,7 +101,7 @@ public final class VersionedJsonCacheReader {
         if (value == null) return null;
         long freshUntil = freshness.freshUntilMillis(value, now);
         long until = now > Long.MAX_VALUE - versionCacheMillis ? Long.MAX_VALUE : now + versionCacheMillis;
-        version = new Version(value, until, freshUntil);
+        version = new Version(value, namespace + ":v:" + value + ":id:", until, freshUntil);
         if (versionCacheMillis > 0) cached = version;
         return version;
     }
