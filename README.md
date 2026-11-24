@@ -19,10 +19,6 @@ Opt-in versioned L1 reads and owned JSON responses reduce repeated Redis reads a
 New usage guide: [Explicit, bounded operations](docs/functional-operations.md).
 
 Native package compatibility: [Native availability and startup compatibility](docs/native-availability.md).
-All four packaged platforms use the coordinated source build. OpenJ9 21 runtime
-checks passed on Windows x64, Linux ARM64 and macOS ARM64: 16 checks per platform,
-zero skips. Linux x64 load/soak qualification runs on EmaTech. Compatibility is
-not a Redis topology or performance qualification for the hosted platforms.
 
 Usage guide: [Opt-in versioned L1](docs/versioned-l1.md). These APIs
 are opt-in in `0.9.0`; existing readers remain unchanged.
@@ -118,7 +114,6 @@ If you are building the normal reader/writer architecture, start from the
 - [Declarative projections](#declarative-projection-settings)
 - [Configuration](#configuration)
 - [Standalone, Sentinel, and Cluster](#topology-recipes)
-- [Production verification](#verification)
 
 ## Data Flow
 
@@ -173,14 +168,6 @@ The loader chooses the resource from the operating system and CPU architecture:
 | Linux x64 | `native/linux-x64/librust_hyper-linux-x64.so` |
 | macOS ARM64 | `native/macos-arm64/librust_hyper-macos-arm64.dylib` |
 | Linux ARM64 | `native/linux-arm64/librust_hyper-linux-arm64.so` |
-
-The `0.9.0` package includes all four native binaries and their matching checksums.
-OpenJ9 21 compatibility checks also execute on ARM64 and Windows. Performance and
-Redis topology evidence remain separately scoped to the recorded EmaTech runs.
-For a custom build, use the REST repository's `scripts/sync-native-artifacts.ps1`.
-The loader verifies Redis ABI `6` and the
-selected platform's hash before loading it. The cache-only process does not consume REST or
-Glowroot ABI exports. Extraction stays under `${user.home}/.java-rust-cache/native` unless configured.
 
 ### GitHub Packages Access
 
@@ -638,102 +625,6 @@ reactor.cache.redis.database=0
 Redis Cluster does not support database selection; `reactor.cache.redis.database` must stay `0`. If you need multi-key locality, use Redis hash tags in your own key design, for example `customer:{1001}:profile` and `customer:{1001}:orders`. Keys with the same tag route to the same slot.
 
 Kubernetes note: Cluster nodes must announce addresses reachable from the application pod. If Redis returns pod-local or container-local addresses in `CLUSTER SLOTS`/`MOVED`, routing will fail regardless of the client.
-
-## Verification
-
-The normal unit test suite does not need Redis:
-
-```powershell
-mvn -q test
-```
-
-To verify the real native Redis data plane, start Redis and opt into the integration test:
-
-```powershell
-docker run -d --name java-rust-cache-redis-test -p 16379:6379 redis:8.2.1-alpine3.22
-
-mvn -q test `
-  "-Dreactor.cache.redis.integration=true" `
-  "-Dreactor.cache.redis.integration.port=16379"
-
-docker rm -f java-rust-cache-redis-test
-```
-
-This integration test covers `GET`, `MGET`, `SET`, `SET NX`, `setMany`, `DEL`, `EXISTS`, `INCR`, `PEXPIRE`, `PTTL`, lock acquire/renew/release, and native metrics. If this test fails after a Java package refactor, check the Rust JNI export names first.
-
-The same integration test can be pointed at Sentinel or Cluster:
-
-```powershell
-mvn -q test `
-  "-Dreactor.cache.redis.integration=true" `
-  "-Dreactor.cache.redis.integration.topology=sentinel" `
-  "-Dreactor.cache.redis.integration.nodes=127.0.0.1:26379" `
-  "-Dreactor.cache.redis.integration.sentinel.master-name=mymaster"
-
-mvn -q test `
-  "-Dreactor.cache.redis.integration=true" `
-  "-Dreactor.cache.redis.integration.topology=cluster" `
-  "-Dreactor.cache.redis.integration.nodes=127.0.0.1:17000"
-```
-
-These are smoke gates. They prove that the native bridge can talk to the selected topology, but they do not prove failover behavior.
-
-For a production promotion, run the topology gates against real multi-node Redis topologies. The tests are intentionally opt-in because they require Docker networks or externally managed Redis environments:
-
-```powershell
-# Requires a 3-Sentinel setup and a master name that can fail over to a replica.
-mvn -q test `
-  "-Dtest=RedisTopologyGateTest#sentinelRefreshesExistingClientAfterFailover" `
-  "-Dreactor.cache.redis.sentinel-failover-gate=true" `
-  "-Dreactor.cache.redis.integration.nodes=redis-sentinel-0:26379,redis-sentinel-1:26379,redis-sentinel-2:26379" `
-  "-Dreactor.cache.redis.integration.sentinel.master-name=mymaster"
-
-# Requires a real Redis Cluster with at least 3 masters.
-mvn -q test `
-  "-Dtest=RedisTopologyGateTest#clusterHandlesMovedAndAskRedirects" `
-  "-Dreactor.cache.redis.cluster-redirect-gate=true" `
-  "-Dreactor.cache.redis.integration.nodes=redis-cluster-0:6379,redis-cluster-1:6379,redis-cluster-2:6379"
-
-# Requires a Redis Cluster with replicas so one master can be stopped and replaced.
-mvn -q test `
-  "-Dtest=RedisTopologyGateTest#clusterRefreshesExistingClientAfterReplicaFailover" `
-  "-Dreactor.cache.redis.cluster-failover-gate=true" `
-  "-Dreactor.cache.redis.integration.nodes=redis-cluster-0:6379,redis-cluster-1:6379,redis-cluster-2:6379,redis-cluster-3:6379,redis-cluster-4:6379,redis-cluster-5:6379"
-```
-
-Passing these gates means the existing Java client object can recover its native topology view after Sentinel failover, Redis Cluster `MOVED`/`ASK` redirects, and Cluster master failover. Still run a sustained load gate under your real Kubernetes CPU/memory limits before calling the profile stable.
-
-On Docker Desktop, avoid starting Maven dependency download or full Surefire bootstrap while Redis Sentinel is running. Sentinel can enter `TILT` mode when the container runtime pauses its event loop, and failover will be delayed by design. For local live gates, pre-run `mvn -DskipTests test-compile dependency:build-classpath` and then execute `com.reactor.rust.cache.core.RedisTopologyLiveGateMain` from `target/test-classes`. This uses the same gate logic with much lower runtime noise.
-
-Before promoting a new build, also run the Redis restart and short load gates:
-
-```powershell
-docker run -d --name java-rust-cache-redis-test -p 16379:6379 redis:8.2.1-alpine3.22
-
-mvn -q test `
-  "-Dreactor.cache.redis.reconnect-gate=true" `
-  "-Dreactor.cache.redis.integration.container=java-rust-cache-redis-test" `
-  "-Dreactor.cache.redis.integration.port=16379"
-
-mvn -q test `
-  "-Dreactor.cache.redis.load-gate=true" `
-  "-Dreactor.cache.redis.integration.port=16379" `
-  "-Dreactor.cache.redis.integration.read-connections=8" `
-  "-Dreactor.cache.redis.integration.write-connections=8" `
-  "-Dreactor.cache.redis.integration.max-read-inflight=64" `
-  "-Dreactor.cache.redis.integration.max-write-inflight=64" `
-  "-Dreactor.cache.redis.load-gate.threads=8" `
-  "-Dreactor.cache.redis.load-gate.operations-per-thread=500"
-
-docker rm -f java-rust-cache-redis-test
-```
-
-If the integration Redis uses ACL or `requirepass`, add
-`-Dreactor.cache.redis.integration.username=...` and
-`-Dreactor.cache.redis.integration.password=...` to both Maven commands. Omit the username for a
-password-only Redis configuration.
-
-The reconnect gate intentionally allows the first operation after restart to fail. The production expectation is that the failed socket is discarded and the next operation opens a fresh Redis connection.
 
 ## Production Checklist
 

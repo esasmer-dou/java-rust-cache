@@ -19,11 +19,6 @@ Redis anahtarları, topolojileri ve varsayılanlar değişmez. [Geçiş ayrınt�
 Yeni kullanım rehberi: [Açık ve sınırlı işlemler](docs/functional-operations.tr.md).
 
 Native paket uyumluluğu: [Native platformlar ve başlangıç uyumluluğu](docs/native-availability.tr.md).
-Dört platformun dosyaları aynı kaynak sürümünden derlenir. OpenJ9 21 kontrolleri
-Windows x64, Linux ARM64 ve macOS ARM64 üzerinde geçti. Her platformda 16 kontrol
-çalıştı; atlanan test olmadı. Linux x64 yük ve uzun süreli çalışma testleri
-EmaTech'te yapılır. Uyumluluk sonucu, diğer platformların Redis topoloji veya
-performans testinden geçtiği anlamına gelmez.
 
 Kullanım rehberi: [İsteğe bağlı sürümlü L1](docs/versioned-l1.tr.md). Bu API'ler
 `0.9.0` paketinde bulunur. Mevcut okuyucular değişmez.
@@ -119,7 +114,6 @@ başlayın.
 - [Deklaratif projection](#declarative-projection-settings)
 - [Konfigürasyon](#configuration)
 - [Standalone, Sentinel ve Cluster](#topology-reçeteleri)
-- [Production doğrulaması](#doğrulama)
 
 ## Veri Akışı
 
@@ -176,14 +170,6 @@ Yükleyici, işletim sistemi ve işlemci mimarisine göre dosyayı seçer:
 | Linux x64 | `native/linux-x64/librust_hyper-linux-x64.so` |
 | macOS ARM64 | `native/macos-arm64/librust_hyper-macos-arm64.dylib` |
 | Linux ARM64 | `native/linux-arm64/librust_hyper-linux-arm64.so` |
-
-`0.9.0` paketi dört platformun native dosyalarını ve checksum bilgilerini içerir.
-OpenJ9 21 uyumluluk kontrolleri ARM64 ve Windows üzerinde de çalışır. Performans
-ve Redis topoloji sonuçları, kayıtlarda belirtilen EmaTech koşularına aittir.
-Özel build için REST reposundaki `scripts/sync-native-artifacts.ps1` aracını kullanın.
-Yükleyici, dosyayı açmadan önce Redis ABI `6`
-ve seçilen platformun hash bilgisini doğrular. Yalnız cache kullanan process, REST veya Glowroot
-ABI işlevlerini çağırmaz. Ayar verilmezse dosya `${user.home}/.java-rust-cache/native` altında açılır.
 
 ### GitHub Packages Erişimi
 
@@ -651,105 +637,6 @@ customer:{1001}:orders
 Aynı tag aynı slota gider.
 
 Kubernetes notu: Cluster node'ları uygulama pod'undan erişilebilir adresleri announce etmelidir. Redis `CLUSTER SLOTS` veya `MOVED` içinde pod-local ya da container-local adres döndürürse client doğru olsa bile routing başarısız olur.
-
-## Doğrulama
-
-Normal unit test Redis istemez:
-
-```powershell
-mvn -q test
-```
-
-Gerçek native Redis data plane için Redis başlatıp integration test'i açın:
-
-```powershell
-docker run -d --name java-rust-cache-redis-test -p 16379:6379 redis:8.2.1-alpine3.22
-
-mvn -q test `
-  "-Dreactor.cache.redis.integration=true" `
-  "-Dreactor.cache.redis.integration.port=16379"
-
-docker rm -f java-rust-cache-redis-test
-```
-
-Bu test `GET`, `MGET`, `SET`, `SET NX`, `setMany`, `DEL`, `EXISTS`, `INCR`, `PEXPIRE`, `PTTL`, lock acquire/renew/release ve native metrics akışını kapsar. Java package refactor sonrası bu test kırılırsa önce Rust JNI export isimlerini kontrol edin.
-
-Sentinel veya Cluster smoke test:
-
-```powershell
-mvn -q test `
-  "-Dreactor.cache.redis.integration=true" `
-  "-Dreactor.cache.redis.integration.topology=sentinel" `
-  "-Dreactor.cache.redis.integration.nodes=127.0.0.1:26379" `
-  "-Dreactor.cache.redis.integration.sentinel.master-name=mymaster"
-
-mvn -q test `
-  "-Dreactor.cache.redis.integration=true" `
-  "-Dreactor.cache.redis.integration.topology=cluster" `
-  "-Dreactor.cache.redis.integration.nodes=127.0.0.1:17000"
-```
-
-Bunlar smoke gate'tir. Native bridge'in seçilen topology ile konuşabildiğini gösterir. Failover davranışını tek başına kanıtlamaz.
-
-Production promotion için gerçek çok node'lu Redis topology üzerinde şu gate'leri çalıştırın:
-
-```powershell
-mvn -q test `
-  "-Dtest=RedisTopologyGateTest#sentinelRefreshesExistingClientAfterFailover" `
-  "-Dreactor.cache.redis.sentinel-failover-gate=true" `
-  "-Dreactor.cache.redis.integration.nodes=redis-sentinel-0:26379,redis-sentinel-1:26379,redis-sentinel-2:26379" `
-  "-Dreactor.cache.redis.integration.sentinel.master-name=mymaster"
-
-mvn -q test `
-  "-Dtest=RedisTopologyGateTest#clusterHandlesMovedAndAskRedirects" `
-  "-Dreactor.cache.redis.cluster-redirect-gate=true" `
-  "-Dreactor.cache.redis.integration.nodes=redis-cluster-0:6379,redis-cluster-1:6379,redis-cluster-2:6379"
-
-mvn -q test `
-  "-Dtest=RedisTopologyGateTest#clusterRefreshesExistingClientAfterReplicaFailover" `
-  "-Dreactor.cache.redis.cluster-failover-gate=true" `
-  "-Dreactor.cache.redis.integration.nodes=redis-cluster-0:6379,redis-cluster-1:6379,redis-cluster-2:6379,redis-cluster-3:6379,redis-cluster-4:6379,redis-cluster-5:6379"
-```
-
-Bu gate'lerin geçmesi mevcut Java client object'in Sentinel failover, Redis Cluster `MOVED`/`ASK` redirect ve Cluster master failover sonrası native topology bilgisini yenileyebildiğini gösterir. Yine de stable demeden önce gerçek Kubernetes CPU/memory limitleri altında load gate çalıştırın.
-
-Docker Desktop üzerinde Redis Sentinel çalışırken Maven dependency download veya tam Surefire bootstrap başlatmayın. Container runtime event loop duraksarsa Sentinel `TILT` mode'a girebilir. Local live gate için önce şunu çalıştırın:
-
-```powershell
-mvn -DskipTests test-compile dependency:build-classpath
-```
-
-Sonra `com.reactor.rust.cache.core.RedisTopologyLiveGateMain` sınıfını `target/test-classes` üzerinden çalıştırın. Aynı gate logic daha düşük runtime gürültüsüyle koşar.
-
-Yeni build'i promote etmeden önce Redis restart ve kısa load gate de çalıştırın:
-
-```powershell
-docker run -d --name java-rust-cache-redis-test -p 16379:6379 redis:8.2.1-alpine3.22
-
-mvn -q test `
-  "-Dreactor.cache.redis.reconnect-gate=true" `
-  "-Dreactor.cache.redis.integration.container=java-rust-cache-redis-test" `
-  "-Dreactor.cache.redis.integration.port=16379"
-
-mvn -q test `
-  "-Dreactor.cache.redis.load-gate=true" `
-  "-Dreactor.cache.redis.integration.port=16379" `
-  "-Dreactor.cache.redis.integration.read-connections=8" `
-  "-Dreactor.cache.redis.integration.write-connections=8" `
-  "-Dreactor.cache.redis.integration.max-read-inflight=64" `
-  "-Dreactor.cache.redis.integration.max-write-inflight=64" `
-  "-Dreactor.cache.redis.load-gate.threads=8" `
-  "-Dreactor.cache.redis.load-gate.operations-per-thread=500"
-
-docker rm -f java-rust-cache-redis-test
-```
-
-Integration Redis ACL veya `requirepass` kullanıyorsa iki Maven komutuna da
-`-Dreactor.cache.redis.integration.username=...` ve
-`-Dreactor.cache.redis.integration.password=...` ekleyin. Redis yalnız parola kullanıyorsa username
-parametresini vermeyin.
-
-Reconnect gate restart sonrası ilk operation'ın fail etmesine izin verir. Production beklentisi şudur: bozuk socket atılır ve sonraki operation yeni Redis connection açar.
 
 ## Production Kontrol Listesi
 
